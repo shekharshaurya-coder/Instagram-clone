@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SocialSync</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app">
+        <!-- ==================== LEFT SIDEBAR ==================== -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-logo">SocialSync</div>
+            </div>
+
+            <div class="account-section">
+                <div class="account-avatar">👤</div>
+                <div class="account-info">
+                    <h3>John Developer</h3>
+                    <p>@johndeveloper</p>
+                </div>
+            </div>
+
+            <ul class="menu">
+                <li class="menu-item">
+                    <a class="menu-link active" onclick="return false">🏠 Home</a>
+                </li>
+                <li class="menu-item">
+                    <a class="menu-link" onclick="showPostModal()">➕ Post</a>
+                </li>
+                <li class="menu-item">
+                    <a class="menu-link" onclick="return false">📊 Analytics</a>
+                </li>
+                <li class="menu-item">
+                    <a class="menu-link" onclick="return false">👤 Profile</a>
+                </li>
+            </ul>
+
+            <div class="sidebar-footer">
+                <button class="logout-btn">Logout</button>
+            </div>
+        </aside>
+
+        <!-- ==================== MAIN CONTENT ==================== -->
+        <main class="main-container">
+            <div class="top-header">
+                <div class="toggle-switch">
+                    <button class="toggle-btn active" onclick="showFeed()">📱 Feed</button>
+                    <button class="toggle-btn" onclick="showMessages()">💬 Messages</button>
+                </div>
+            </div>
+
+            <!-- ==================== FEED VIEW ==================== -->
+            <div class="content active" id="feed-view">
+                <div class="stories">
+                    <div class="story">
+                        <div class="story-avatar">👩</div>
+                        <div class="story-name">Sarah</div>
+                    </div>
+                    <div class="story">
+                        <div class="story-avatar">👨</div>
+                        <div class="story-name">Mike</div>
+                    </div>
+                    <div class="story">
+                        <div class="story-avatar">🧑</div>
+                        <div class="story-name">Alex</div>
+                    </div>
+                    <div class="story">
+                        <div class="story-avatar">👩‍🦱</div>
+                        <div class="story-name">Emma</div>
+                    </div>
+                    <div class="story">
+                        <div class="story-avatar">👨‍💼</div>
+                        <div class="story-name">David</div>
+                    </div>
+                </div>
+
+                <div class="stories">
+                    <div class="story">
+                        <div class="story-avatar">👩</div>
+                        <div class="story-name">Sarah</div>
+                    </div>
+                    <div class="post-header">
+                        <div class="post-author">
+                            <div class="post-avatar-small">👩</div>
+                            <div class="author-info">
+                                <h4>Sarah Chen</h4>
+                                <p>@sarah • 2 hours ago</p>
+                            </div>
+                        </div>
+                        <button class="post-menu">⋯</button>
+                    </div>
+                    <div class="post-text">Just launched our new feature! Really excited about how it turned out 🚀</div>
+                    <div class="post-buttons">
+                        <button class="post-btn">🤍 Like</button>
+                        <button class="post-btn">💬 Comment</button>
+                        <button class="post-btn">↗️ Share</button>
+                    </div>
+                </div>
+
+                <div class="post">
+                    <div class="post-header">
+                        <div class="post-author">
+                            <div class="post-avatar-small">👨</div>
+                            <div class="author-info">
+                                <h4>Mike Johnson</h4>
+                                <p>@mike • 4 hours ago</p>
+                            </div>
+                        </div>
+                        <button class="post-menu">⋯</button>
+                    </div>
+                    <div class="post-text">Beautiful sunset at the park today ☀️ Perfect evening!</div>
+                    <div class="post-buttons">
+                        <button class="post-btn">🤍 Like</button>
+                        <button class="post-btn">💬 Comment</button>
+                        <button class="post-btn">↗️ Share</button>
+                    </div>
+                </div>
+
+                <div class="post">
+                    <div class="post-header">
+                        <div class="post-author">
+                            <div class="post-avatar-small">🧑</div>
+                            <div class="author-info">
+                                <h4>Alex Rivera</h4>
+                                <p>@alex • 6 hours ago</p>
+                            </div>
+                        </div>
+                        <button class="post-menu">⋯</button>
+                    </div>
+                    <div class="post-text">Working on something cool with the team 💻 Can't wait to share!</div>
+                    <div class="post-buttons">
+                        <button class="post-btn">🤍 Like</button>
+                        <button class="post-btn">💬 Comment</button>
+                        <button class="post-btn">↗️ Share</button>
+                    </div>
+                </div>
+
+                <div class="post">
+                    <div class="post-header">
+                        <div class="post-author">
+                            <div class="post-avatar-small">👩‍🦱</div>
+                            <div class="author-info">
+                                <h4>Emma Wilson</h4>
+                                <p>@emma • 8 hours ago</p>
+                            </div>
+                        </div>
+                        <button class="post-menu">⋯</button>
+                    </div>
+                    <div class="post-text">Coffee + coding = productivity ☕️ How's everyone's day?</div>
+                    <div class="post-buttons">
+                        <button class="post-btn">🤍 Like</button>
+                        <button class="post-btn">💬 Comment</button>
+                        <button class="post-btn">↗️ Share</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== MESSAGES VIEW ==================== -->
+            <div class="content" id="messages-view">
+                <div class="search-box">
+                    <input type="text" class="search-input" placeholder="Search conversations...">
+                </div>
+
+                <ul class="messages-list">
+                    <li class="message-item">
+                        <div class="message-avatar">👩</div>
+                        <div class="message-info">
+                            <div class="message-header">
+                                <div class="message-name">Sarah Chen</div>
+                                <div class="message-time">2h</div>
+                            </div>
+                            <div class="message-preview">That sounds great! 👍</div>
+                        </div>
+                    </li>
+                    <li class="message-item">
+                        <div class="message-avatar">👥</div>
+                        <div class="message-info">
+                            <div class="message-header">
+                                <div class="message-name">Team Project</div>
+                                <div class="message-time">1h</div>
+                            </div>
+                            <div class="message-preview">You: Check the files I sent</div>
+                        </div>
+                    </li>
+                    <li class="message-item">
+                        <div class="message-avatar">👨</div>
+                        <div class="message-info">
+                            <div class="message-header">
+                                <div class="message-name">Mike Johnson</div>
+                                <div class="message-time">45m</div>
+                            </div>
+                            <div class="message-preview">See you tomorrow!</div>
+                        </div>
+                    </li>
+                    <li class="message-item">
+                        <div class="message-avatar">👩‍🦱</div>
+                        <div class="message-info">
+                            <div class="message-header">
+                                <div class="message-name">Emma Wilson</div>
+                                <div class="message-time">30m</div>
+                            </div>
+                            <div class="message-preview">Haha that was funny 😂</div>
+                        </div>
+                    </li>
+                    <li class="message-item">
+                        <div class="message-avatar">👥</div>
+                        <div class="message-info">
+                            <div class="message-header">
+                                <div class="message-name">Design Squad</div>
+                                <div class="message-time">15m</div>
+                            </div>
+                            <div class="message-preview">Design looks perfect!</div>
+                        </div>
+                    </li>
+                    <li class="message-item">
+                        <div class="message-avatar">🧑</div>
+                        <div class="message-info">
+                            <div class="message-header">
+                                <div class="message-name">Alex Rivera</div>
+                                <div class="message-time">5m</div>
+                            </div>
+                            <div class="message-preview">Hey! How are you?</div>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+        </main>
+
+        <!-- ==================== POST MODAL ==================== -->
+        <div class="modal-overlay" id="postModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <div class="modal-title">Create Post</div>
+                    <button class="modal-close" onclick="closePostModal()">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="post-type-selector">
+                        <button class="type-btn active" onclick="selectPostType('text')">📝 Text Post</button>
+                        <button class="type-btn" onclick="selectPostType('file')">📎 File Post</button>
+                    </div>
+
+                    <!-- Text Post Form -->
+                    <div class="post-form active" id="textForm">
+                        <div class="form-group">
+                            <label class="form-label">What's on your mind?</label>
+                            <textarea class="form-textarea" placeholder="Share your thoughts..."></textarea>
+                        </div>
+                    </div>
+
+                    <!-- File Post Form -->
+                    <div class="post-form" id="fileForm">
+                        <div class="form-group">
+                            <label class="form-label">Upload File</label>
+                            <label class="file-upload-area">
+                                <input type="file" accept="image/*,video/*">
+                                <div class="upload-icon">📁</div>
+                                <div class="upload-text">Click to upload or drag and drop</div>
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Caption</label>
+                            <input type="text" class="form-input" placeholder="Add a caption to your file...">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-cancel" onclick="closePostModal()">Cancel</button>
+                    <button class="btn-post">Post</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+   <script src="script.js"></script>
+</body>
+</html>
