@@ -1,40 +1,44 @@
-// models/user.js
+// backend/models/User.js
 const { Schema, model } = require("mongoose");
-const Counter = require("./counter");
+const Counter = require("./Counter");
 
-const UserSchema = new Schema({
-  userId: { type: Number, unique: true },   // AUTO INCREMENT ID
-  username: { type: String, required: true, unique: true, index: true },
-  email: { type: String, required: true, unique: true, index: true },
-  passwordHash: { type: String, required: true },
+const UserSchema = new Schema(
+  {
+    userId: { type: Number, unique: true }, // Auto-increment ID
 
-  displayName: { type: String, default: "" },
-  bio: { type: String, default: "" },
-  avatarUrl: { type: String, default: "" },
+    username: { type: String, required: true, unique: true, index: true },
+    email: { type: String, required: true, unique: true, index: true },
+    passwordHash: { type: String, required: true },
 
-  followersCount: { type: Number, default: 0 },
-  followingCount: { type: Number, default: 0 },
-}, { timestamps: true });
+    displayName: { type: String, default: "" },
+    bio: { type: String, default: "" },
+    avatarUrl: { type: String, default: "" },
 
+    followersCount: { type: Number, default: 0 },
+    followingCount: { type: Number, default: 0 },
+  },
+  { timestamps: true }
+);
 
-// ⭐ AUTO-INCREMENT MIDDLEWARE ⭐
-UserSchema.pre("save", async function (next) {
-  if (this.userId) {
-    return next(); // already set (updating existing user)
+// NOTE: async pre-save hooks should NOT call next() — Mongoose expects the async function to resolve/throw.
+UserSchema.pre("save", async function () {
+  // If updating existing user (userId already set) -> skip increment
+  if (this.userId) return;
+
+  // get a new counter value
+  const counter = await Counter.findOneAndUpdate(
+    { name: "userId" },
+    { $inc: { value: 1 } },
+    { new: true, upsert: true } // return the updated doc
+  );
+
+  if (!counter) {
+    // Defensive: if counter somehow not returned, throw to stop saving.
+    throw new Error("Failed to generate userId");
   }
 
-  try {
-    const counter = await Counter.findOneAndUpdate(
-      { name: "userId" },
-      { $inc: { value: 1 } },
-      { upsert: true, new: true }
-    );
-
-    this.userId = counter.value; // Assign new auto increment ID
-    next();
-  } catch (err) {
-    next(err);
-  }
+  this.userId = counter.value;
+  // do not call next(); returning/finishing is enough
 });
 
 module.exports = model("User", UserSchema);

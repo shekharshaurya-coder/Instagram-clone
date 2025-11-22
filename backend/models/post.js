@@ -1,38 +1,47 @@
-// models/post.js
-const { Schema, model, Types } = require("mongoose");
-const Counter = require("./counter");
+// models/Post.js
+const mongoose = require('mongoose');
 
-const PostSchema = new Schema({
-  postId: { type: Number, unique: true },  // AUTO INCREMENT
-
-  author: { type: Types.ObjectId, ref: "User", required: true, index: true },
-  caption: { type: String, default: "" },
-
-  media: [{
-    url: String,
-    type: { type: String, enum: ["image", "video"], default: "image" },
-    width: Number,
-    height: Number,
-    duration: Number,
+const postSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  username: {
+    type: String,
+    required: true
+  },
+  content: {
+    type: String,
+    required: true
+  },
+  type: {
+    type: String,
+    enum: ['text', 'file'],
+    default: 'text'
+  },
+  mediaUrl: {
+    type: String,
+    default: null
+  },
+  likes: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
   }],
-
-  likesCount: { type: Number, default: 0 },
-  commentsCount: { type: Number, default: 0 },
-  hashtags: [{ type: String }],
-
-}, { timestamps: true });
-
-PostSchema.pre("save", async function(next) {
-  if (this.postId) return next();
-  
-  const counter = await Counter.findOneAndUpdate(
-    { name: "postId" },
-    { $inc: { value: 1 }},
-    { upsert: true, new: true }
-  );
-
-  this.postId = counter.value;
-  next();
+  comments: [{
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    username: String,
+    text: String,
+    createdAt: {
+      type: Date,
+      default: Date.now
+    }
+  }]
+}, { 
+  timestamps: true 
 });
 
-module.exports = model("Post", PostSchema);
+module.exports = mongoose.model('Post', postSchema);
