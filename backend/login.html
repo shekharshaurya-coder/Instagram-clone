@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SocialSync — Login</title>
+  <style>
+    :root{
+      --bg:#0f0f11;
+      --panel:#151516;
+      --muted:#9b9b9f;
+      --accent:#7b6ef6;
+      --card:#171718;
+      --border:rgba(255,255,255,0.03);
+      font-family: Inter, system-ui, sans-serif;
+    }
+    html,body{
+      height:100%; margin:0;
+      background: #000000;
+      background-size: cover;
+      
+      background-size: cover;
+      color:#e9e9eb;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+
+    .card{
+      width:820px;
+      max-width:95%;
+      background:var(--card);
+      border-radius:12px;
+      padding:34px;
+      border:1px solid var(--border);
+      box-shadow:0 4px 18px rgba(0,0,0,0.6);
+    }
+    .card-header{margin-bottom:18px}
+    .card-title{font-size:22px;font-weight:700}
+    .card-sub{font-size:13px;color:var(--muted)}
+
+    .form-wrap{display:flex;gap:40px;align-items:flex-start}
+    .left-illustration{width:240px;display:flex;flex-direction:column;align-items:center;gap:12px}
+    .illus-circle{width:140px;height:140px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 20% 20%, #7b6ef6,#3b2fef)}
+    .illus-circle img{width:100%;height:100%;object-fit:cover}
+    .illus-text{font-size:13px;color:var(--muted);text-align:center}
+
+    .form{flex:1}
+    label{display:block;font-size:13px;margin-bottom:8px;color:var(--muted)}
+    input{width:100%;padding:12px 14px;background:var(--panel);border:1px solid var(--border);border-radius:8px;color:#fff}
+
+    .actions{display:flex;align-items:center;justify-content:space-between;margin-top:14px}
+    .btn{padding:10px 16px;border-radius:10px;border:none;cursor:pointer}
+    .btn-primary{background:var(--accent);color:#fff;font-weight:600}
+    .btn-ghost{background:transparent;border:1px solid var(--border);color:var(--muted)}
+
+    .error{color:#ff7979;margin-top:8px;font-size:13px}
+    .helper{margin-top:18px;font-size:13px;color:var(--muted)}
+
+    @media(max-width:900px){.form-wrap{flex-direction:column}.left-illustration{order:2;width:100%}}
+  </style>
+</head>
+<body>
+
+  <section class="card">
+    
+    <div class="card-header">
+      <div class="card-title">Welcome to SocialSync</div>
+      <div class="card-sub">Log in to continue to SocialSync</div>
+    </div>
+
+    <div class="form-wrap">
+      <div class="left-illustration">
+        <div class="illus-circle">
+          <img src="/backend/monkey.jpg" alt="Monkey Cartoon" style="width:100%;height:100%;object-fit:cover;">
+        </div>
+        <div class="illus-text">Secure sign in to access your feed, messages and analytics.</div>
+      </div>
+
+      <form id="loginForm" class="form" onsubmit="return false;">
+        <div>
+          <label>Email</label>
+          <input id="email" type="email" required placeholder="you@domain.com">
+        </div>
+
+        <div style="margin-top:14px">
+          <label>Password</label>
+          <div style="position:relative; max-width:320px;">
+            <input id="password" type="password" required placeholder="••••••••" style="padding-right:36px; width:100%;">
+            <span id="togglePass" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);font-size:14px;">👁️</span>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button id="submitBtn" class="btn btn-primary" type="button">Sign in</button>
+          <a href="/signup.html" class="btn btn-ghost">Sign up</a>
+        </div>
+
+        <div id="error" class="error" style="display:none"></div>
+        <div id="loading" class="helper" style="display:none">Checking credentials…</div>
+      </form>
+    </div>
+  </section>
+
+<script>
+  const submitBtn=document.getElementById('submitBtn');
+  const errorEl=document.getElementById('error');
+  const loadingEl=document.getElementById('loading');
+
+  function showError(msg){errorEl.style.display='block';errorEl.innerHTML=msg}
+  function clearError(){errorEl.style.display='none';errorEl.innerHTML=''}
+
+  async function postJSON(url,data){
+    const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+    const body=await res.json().catch(()=>({}));
+    return {status:res.status,body};
+  }
+
+  submitBtn.addEventListener('click',async()=>{
+    clearError();
+    const email=document.getElementById('email').value.trim();
+    const password=document.getElementById('password').value;
+
+    if(!email||!password){showError("Enter email & password");return;}
+
+    loadingEl.style.display='block';
+    submitBtn.disabled=true;
+
+    try{
+      const {status,body}=await postJSON('/api/auth/login',{email,password});
+
+      if(status===200){
+        if(body.token) localStorage.setItem('authToken',body.token);
+        window.location.href='/index.html';
+        return;
+      }
+
+      if(status===404){window.location.href='/signup.html';return;}
+      if(status===401){showError("Incorrect password");return;}
+      showError(body.message||"Login failed");
+
+    }catch(err){showError("Network error");}
+    finally{
+      loadingEl.style.display='none';
+      submitBtn.disabled=false;
+    }
+  });
+
+// Password toggle logic
+const togglePass = document.getElementById('togglePass');
+const passwordInput = document.getElementById('password');
+if(togglePass && passwordInput){
+  togglePass.addEventListener('click', ()=>{
+    const isPwd = passwordInput.type === 'password';
+    passwordInput.type = isPwd ? 'text' : 'password';
+    togglePass.textContent = isPwd ? '🙈' : '👁️';
+    // keep focus on input after toggle
+    passwordInput.focus();
+    // move cursor to end
+    const val = passwordInput.value;
+    passwordInput.value = '';
+    passwordInput.value = val;
+  });
+}
+</script>
+
+</body>
+</html>
