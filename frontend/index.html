@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta-name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SocialSync</title>
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -26,10 +26,19 @@
 
             <ul class="menu">
                 <li class="menu-item">
-                    <a class="menu-link active" onclick="return false">🏠 Home</a>
+                    <a class="menu-link" onclick="showSearchModal()">🔍 Search</a>
+                </li>
+                <li class="menu-item">
+                    <a class="menu-link active" onclick="switchToHome()">🏠 Home</a>
                 </li>
                 <li class="menu-item">
                     <a class="menu-link" onclick="showPostModal()">➕ Post</a>
+                </li>
+                <li class="menu-item">
+                    <a class="menu-link" onclick="switchToNotifications()">
+                        🔔 Notifications
+                        <span class="notification-badge" id="notificationBadge" style="display:none;"></span>
+                    </a>
                 </li>
                 <li class="menu-item">
                     <a class="menu-link" href="/analytics.html">📊 Analytics</a>
@@ -50,33 +59,82 @@
                 <div class="toggle-switch">
                     <button class="toggle-btn active" onclick="showFeed()">📱 Feed</button>
                     <button class="toggle-btn" onclick="showMessages()">💬 Messages</button>
+                    <button class="toggle-btn" onclick="showNotifications()">🔔 Notifications</button>
                 </div>
             </div>
 
             <!-- ==================== FEED VIEW ==================== -->
             <div class="content active" id="feed-view">
-
-                <!-- Stories container (empty, populated dynamically) -->
                 <div class="stories" id="stories-container"></div>
-
-                <!-- Feed posts container -->
                 <div id="feed-posts"></div>
+            </div>
 
+            <!-- ==================== NOTIFICATIONS VIEW ==================== -->
+            <div class="content" id="notifications-view">
+                <div class="notifications-header">
+                    <h2 style="padding:20px;margin:0;font-size:18px;color:#e4e6eb;">Notifications</h2>
+                </div>
+                <div id="notifications-list"></div>
             </div>
 
             <!-- ==================== MESSAGES VIEW ==================== -->
             <div class="content" id="messages-view">
-
-                <div class="search-box">
-                    <input type="text" class="search-input" placeholder="Search conversations...">
+                <div class="messages-header">
+                    <input type="text" id="messageSearchInput" class="search-input" placeholder="Search users to message..." oninput="searchUsersToMessage()">
+                </div>
+                
+                <div id="messageSearchResults" style="display:none;"></div>
+                
+                <div id="conversationsList">
+                    <div style="padding:20px;text-align:center;color:#8b8d91;">
+                        Your conversations will appear here
+                    </div>
                 </div>
 
-                <ul class="messages-list" id="messages-list">
-                    <!-- Dynamic messages will load here -->
-                </ul>
-
+                <!-- Chat Window -->
+                <div id="chatWindow" style="display:none;">
+                    <div class="chat-header">
+                        <button class="back-to-conversations" onclick="backToConversations()">← Back</button>
+                        <div class="chat-user-info">
+                            <div class="chat-user-avatar" id="chatUserAvatar">👤</div>
+                            <div>
+                                <div class="chat-user-name" id="chatUserName"></div>
+                                <div class="chat-user-username" id="chatUsername"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chat-messages" id="chatMessages"></div>
+                    <div class="chat-input-container">
+                        <input type="text" id="messageInput" class="chat-input" placeholder="Type a message..." onkeypress="handleMessageKeyPress(event)">
+                        <button class="send-message-btn" onclick="sendMessage()">Send</button>
+                    </div>
+                </div>
             </div>
         </main>
+
+        <!-- ==================== SEARCH MODAL ==================== -->
+        <div class="modal-overlay" id="searchModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <div class="modal-title">Search Users</div>
+                    <button class="modal-close" onclick="closeSearchModal()">×</button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="form-group">
+                        <input 
+                            type="text" 
+                            id="searchInput" 
+                            class="form-input" 
+                            placeholder="Search by username..."
+                            oninput="searchUsers()"
+                        >
+                    </div>
+
+                    <div id="searchResults" class="search-results"></div>
+                </div>
+            </div>
+        </div>
 
         <!-- ==================== POST MODAL ==================== -->
         <div class="modal-overlay" id="postModal">

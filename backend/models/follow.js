@@ -1,6 +1,6 @@
 // models/follow.js
 const { Schema, model, Types } = require("mongoose");
-const Counter = require("./counter");
+const Counter = require("./Counter");
 
 const FollowSchema = new Schema({
   followId: { type: Number, unique: true },     // AUTO INCREMENT

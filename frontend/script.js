@@ -212,11 +212,116 @@ document.querySelector('.btn-post').addEventListener('click', async function() {
     }
 });
 
+// ==================== SEARCH MODAL ====================
+let searchTimeout = null;
+
+function showSearchModal() {
+    document.getElementById('searchModal').classList.add('active');
+    document.getElementById('searchInput').focus();
+}
+
+function closeSearchModal() {
+    document.getElementById('searchModal').classList.remove('active');
+    document.getElementById('searchInput').value = '';
+    document.getElementById('searchResults').innerHTML = '';
+}
+
+async function searchUsers() {
+    const query = document.getElementById('searchInput').value.trim();
+    const resultsContainer = document.getElementById('searchResults');
+
+    if (query.length < 2) {
+        resultsContainer.innerHTML = '<div style="padding:20px;text-align:center;color:#8b8d91;font-size:14px;">Type at least 2 characters to search</div>';
+        return;
+    }
+
+    // Debounce search
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(async () => {
+        try {
+            resultsContainer.innerHTML = '<div style="padding:20px;text-align:center;color:#8b8d91;">Searching...</div>';
+
+            const users = await fetchAPI(`/api/users/search?q=${encodeURIComponent(query)}`);
+
+            if (users.length === 0) {
+                resultsContainer.innerHTML = '<div style="padding:20px;text-align:center;color:#8b8d91;font-size:14px;">No users found</div>';
+                return;
+            }
+
+            resultsContainer.innerHTML = users.map(user => `
+                <div class="search-result-item" data-user-id="${user.id}">
+                    <div class="search-user-avatar">${user.avatarUrl ? `<img src="${user.avatarUrl}" alt="">` : '👤'}</div>
+                    <div class="search-user-info">
+                        <div class="search-user-name">${user.displayName}</div>
+                        <div class="search-user-username">@${user.username}</div>
+                        <div class="search-user-stats">${user.followersCount} followers</div>
+                    </div>
+                    <button class="follow-btn" onclick="toggleFollow('${user.id}')" id="followBtn-${user.id}">
+                        Loading...
+                    </button>
+                </div>
+            `).join('');
+
+            // Check follow status for each user
+            users.forEach(user => checkFollowStatus(user.id));
+
+        } catch (error) {
+            console.error('Search error:', error);
+            resultsContainer.innerHTML = '<div style="padding:20px;text-align:center;color:#ff7979;">Error searching users</div>';
+        }
+    }, 500);
+}
+
+async function checkFollowStatus(userId) {
+    try {
+        const result = await fetchAPI(`/api/users/${userId}/following`);
+        const btn = document.getElementById(`followBtn-${userId}`);
+        if (btn) {
+            btn.textContent = result.following ? 'Unfollow' : 'Follow';
+            btn.classList.toggle('following', result.following);
+        }
+    } catch (error) {
+        console.error('Check follow status error:', error);
+    }
+}
+
+async function toggleFollow(userId) {
+    const btn = document.getElementById(`followBtn-${userId}`);
+    const isFollowing = btn.classList.contains('following');
+
+    try {
+        btn.disabled = true;
+        btn.textContent = isFollowing ? 'Unfollowing...' : 'Following...';
+
+        if (isFollowing) {
+            await fetchAPI(`/api/users/${userId}/follow`, { method: 'DELETE' });
+            btn.textContent = 'Follow';
+            btn.classList.remove('following');
+        } else {
+            await fetchAPI(`/api/users/${userId}/follow`, { method: 'POST' });
+            btn.textContent = 'Unfollow';
+            btn.classList.add('following');
+        }
+    } catch (error) {
+        console.error('Toggle follow error:', error);
+        btn.textContent = isFollowing ? 'Unfollow' : 'Follow';
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// Close search modal when clicking outside
+document.getElementById('searchModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeSearchModal();
+    }
+});
+
 // ==================== LOGOUT ====================
-document.querySelector('.logout-btn').addEventListener('click', function() {
+function logout() {
     localStorage.removeItem('authToken');
     window.location.href = '/login.html';
-});
+}
 
 // ==================== INITIALIZE ====================
 document.addEventListener('DOMContentLoaded', async function() {
