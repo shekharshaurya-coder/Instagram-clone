@@ -1,9 +1,8 @@
-// models/media.js
 const { Schema, model, Types } = require("mongoose");
-const Counter = require("./counter");
+const Counter = require("./Counter");
 
 const MediaSchema = new Schema({
-  mediaId: { type: Number, unique: true }, // AUTO INCREMENT
+  mediaId: { type: Number, unique: true },
 
   ownerType: { type: String, enum: ["User", "Post", "Message"], required: true },
   ownerId: { type: Types.ObjectId, required: true },
@@ -20,8 +19,9 @@ const MediaSchema = new Schema({
   processed: { type: Boolean, default: false },
 }, { timestamps: true });
 
-MediaSchema.pre("save", async function(next) {
-  if (this.mediaId) return next();
+// ✅ FIXED: Removed next parameter and next() call
+MediaSchema.pre("save", async function() {
+  if (this.mediaId) return;
 
   const counter = await Counter.findOneAndUpdate(
     { name: "mediaId" },
@@ -30,7 +30,6 @@ MediaSchema.pre("save", async function(next) {
   );
 
   this.mediaId = counter.value;
-  next();
 });
 
 module.exports = model("Media", MediaSchema);

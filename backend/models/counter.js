@@ -1,4 +1,3 @@
-// backend/models/Counter.js
 const { Schema, model } = require("mongoose");
 
 const CounterSchema = new Schema({

@@ -1,18 +1,23 @@
-// models/follow.js
 const { Schema, model, Types } = require("mongoose");
 const Counter = require("./Counter");
 
 const FollowSchema = new Schema({
-  followId: { type: Number, unique: true },     // AUTO INCREMENT
+  followId: { type: Number, unique: true },
 
   follower: { type: Types.ObjectId, ref: "User", required: true },
   followee: { type: Types.ObjectId, ref: "User", required: true },
+  status: { 
+    type: String, 
+    enum: ['pending', 'accepted'], 
+    default: 'accepted'
+  }
 }, { timestamps: true });
 
 FollowSchema.index({ follower: 1, followee: 1 }, { unique: true });
 
-FollowSchema.pre("save", async function(next) {
-  if (this.followId) return next();
+// ✅ FIXED: Removed next parameter and next() call
+FollowSchema.pre("save", async function() {
+  if (this.followId) return;
 
   const counter = await Counter.findOneAndUpdate(
     { name: "followId" },
@@ -21,7 +26,6 @@ FollowSchema.pre("save", async function(next) {
   );
 
   this.followId = counter.value;
-  next();
 });
 
 module.exports = model("Follow", FollowSchema);

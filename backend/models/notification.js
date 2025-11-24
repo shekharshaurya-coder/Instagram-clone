@@ -1,9 +1,8 @@
-// models/notification.js
 const { Schema, model, Types } = require("mongoose");
-const Counter = require("./counter");
+const Counter = require("./Counter");
 
 const NotificationSchema = new Schema({
-  notificationId: { type: Number, unique: true }, // AUTO INCREMENT
+  notificationId: { type: Number, unique: true },
 
   user: { type: Types.ObjectId, ref: "User", required: true },
   actor: { type: Types.ObjectId, ref: "User" },
@@ -20,8 +19,9 @@ const NotificationSchema = new Schema({
 
 }, { timestamps: true });
 
-NotificationSchema.pre("save", async function(next) {
-  if (this.notificationId) return next();
+// ✅ FIXED: Removed next parameter and next() call
+NotificationSchema.pre("save", async function() {
+  if (this.notificationId) return;
 
   const counter = await Counter.findOneAndUpdate(
     { name: "notificationId" },
@@ -30,7 +30,6 @@ NotificationSchema.pre("save", async function(next) {
   );
 
   this.notificationId = counter.value;
-  next();
 });
 
 module.exports = model("Notification", NotificationSchema);

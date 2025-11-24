@@ -6,6 +6,8 @@
     <title>SocialSync</title>
     <link rel="stylesheet" href="styles.css">
 </head>
+<script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+<script src="script.js"></script>
 <body>
     <div class="app">
 
@@ -59,7 +61,7 @@
                 <div class="toggle-switch">
                     <button class="toggle-btn active" onclick="showFeed()">📱 Feed</button>
                     <button class="toggle-btn" onclick="showMessages()">💬 Messages</button>
-                    <button class="toggle-btn" onclick="showNotifications()">🔔 Notifications</button>
+                   <!-- there was a notification thing here , that i(shekhar) removed -->
                 </div>
             </div>
 
@@ -184,7 +186,31 @@
             </div>
         </div>
 
+
+
     </div>
+            <div class="top-actions">
+  <button class="btn" onclick="location.href='messages.html'">Messages</button>
+</div>
+<div class="account-section" id="account-section">
+    <div class="account-avatar">👤</div>
+    <div class="account-info">
+        <h3 id="account-name"></h3>
+        <p id="account-username"></p>
+        
+        <!-- ADD THESE STATS -->
+        <div style="display:flex;gap:15px;margin-top:10px;font-size:13px;">
+            <div onclick="showMyFollowers()" style="cursor:pointer;color:#8b8d91;transition:0.2s;">
+                <span id="my-followers-count" style="font-weight:bold;color:#e4e6eb;">0</span>
+                <span> followers</span>
+            </div>
+            <div onclick="showMyFollowing()" style="cursor:pointer;color:#8b8d91;transition:0.2s;">
+                <span id="my-following-count" style="font-weight:bold;color:#e4e6eb;">0</span>
+                <span> following</span>
+            </div>
+        </div>
+    </div>
+</div>
 
     <script src="script.js"></script>
 </body>

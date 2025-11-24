@@ -1,9 +1,8 @@
-// models/message.js
 const { Schema, model, Types } = require("mongoose");
-const Counter = require("./counter");
+const Counter = require("./Counter");
 
 const MessageSchema = new Schema({
-  messageId: { type: Number, unique: true }, // AUTO INCREMENT
+  messageId: { type: Number, unique: true },
 
   conversationId: { type: String, required: true },
 
@@ -17,8 +16,9 @@ const MessageSchema = new Schema({
   readBy: [{ type: Types.ObjectId }],
 }, { timestamps: true });
 
-MessageSchema.pre("save", async function(next) {
-  if (this.messageId) return next();
+// ✅ FIXED: Removed next parameter and next() call
+MessageSchema.pre("save", async function() {
+  if (this.messageId) return;
 
   const counter = await Counter.findOneAndUpdate(
     { name: "messageId" },
@@ -27,7 +27,6 @@ MessageSchema.pre("save", async function(next) {
   );
 
   this.messageId = counter.value;
-  next();
 });
 
 module.exports = model("Message", MessageSchema);

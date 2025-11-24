@@ -1,7 +1,10 @@
-// models/Post.js
+// models/Post.js - COMPLETE VERSION
 const mongoose = require('mongoose');
+const Counter = require("./Counter");
 
 const postSchema = new mongoose.Schema({
+  postId: { type: Number, unique: true }, // ✅ AUTO INCREMENT ID
+  
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -42,6 +45,22 @@ const postSchema = new mongoose.Schema({
   }]
 }, { 
   timestamps: true 
+});
+
+// ✅ Pre-save hook for auto-increment
+postSchema.pre("save", async function() {
+  // Skip if postId already exists
+  if (this.postId) return;
+
+  // Get next counter value
+  const counter = await Counter.findOneAndUpdate(
+    { name: "postId" },
+    { $inc: { value: 1 }},
+    { upsert: true, new: true }
+  );
+
+  // Assign the counter value to postId
+  this.postId = counter.value;
 });
 
 module.exports = mongoose.model('Post', postSchema);

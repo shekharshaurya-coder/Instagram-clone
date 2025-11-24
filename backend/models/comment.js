@@ -1,9 +1,8 @@
-// models/comment.js
 const { Schema, model, Types } = require("mongoose");
-const Counter = require("./counter");
+const Counter = require("./Counter");
 
 const CommentSchema = new Schema({
-  commentId: { type: Number, unique: true },   // AUTO INCREMENT
+  commentId: { type: Number, unique: true },
 
   post: { type: Types.ObjectId, ref: "Post", required: true },
   author: { type: Types.ObjectId, ref: "User", required: true },
@@ -14,8 +13,9 @@ const CommentSchema = new Schema({
   likesCount: { type: Number, default: 0 },
 }, { timestamps: true });
 
-CommentSchema.pre("save", async function(next) {
-  if (this.commentId) return next();
+// ✅ FIXED: Removed next parameter and next() call
+CommentSchema.pre("save", async function() {
+  if (this.commentId) return;
 
   const counter = await Counter.findOneAndUpdate(
     { name: "commentId" },
@@ -24,7 +24,6 @@ CommentSchema.pre("save", async function(next) {
   );
 
   this.commentId = counter.value;
-  next();
 });
 
 module.exports = model("Comment", CommentSchema);

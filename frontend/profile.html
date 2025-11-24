@@ -37,6 +37,7 @@
             justify-content: center;
             font-size: 60px;
             flex-shrink: 0;
+            overflow: hidden;
         }
 
         .profile-avatar-large img {
@@ -71,6 +72,12 @@
 
         .stat-item {
             text-align: center;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .stat-item:hover {
+            opacity: 0.7;
         }
 
         .stat-number {
@@ -144,7 +151,6 @@
             background: #3a3b3c;
         }
 
-        /* Edit Modal Styles */
         .edit-modal-overlay {
             display: none;
             position: fixed;
@@ -232,6 +238,7 @@
             color: #e4e6eb;
             font-size: 14px;
             font-family: inherit;
+            box-sizing: border-box;
         }
 
         .edit-form-input:focus {
@@ -250,6 +257,7 @@
             font-family: inherit;
             resize: vertical;
             min-height: 100px;
+            box-sizing: border-box;
         }
 
         .edit-form-textarea:focus {
@@ -315,6 +323,51 @@
             margin-top: 10px;
             display: none;
         }
+
+        .preview-avatar-container {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .preview-avatar {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            overflow: hidden;
+        }
+
+        .preview-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .upload-btn {
+            padding: 8px 16px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+
+        .upload-btn:hover {
+            background: #764ba2;
+        }
+
+        .helper-text {
+            font-size: 12px;
+            color: #8b8d91;
+        }
     </style>
 </head>
 <body>
@@ -330,11 +383,11 @@
                     <div class="profile-name" id="profileName">Loading...</div>
                     <div class="profile-username" id="profileUsername">@username</div>
                     <div class="profile-stats">
-                        <div class="stat-item">
+                        <div class="stat-item" id="followersBtn">
                             <div class="stat-number" id="followersCount">0</div>
                             <div class="stat-label">Followers</div>
                         </div>
-                        <div class="stat-item">
+                        <div class="stat-item" id="followingBtn">
                             <div class="stat-number" id="followingCount">0</div>
                             <div class="stat-label">Following</div>
                         </div>
@@ -353,7 +406,7 @@
                 </div>
             </div>
 
-            <button class="edit-profile-btn" onclick="showEditModal()">Edit Profile</button>
+            <button class="edit-profile-btn" id="editProfileBtn">Edit Profile</button>
         </div>
     </div>
 
@@ -362,7 +415,7 @@
         <div class="edit-modal">
             <div class="edit-modal-header">
                 <div class="edit-modal-title">Edit Profile</div>
-                <button class="edit-modal-close" onclick="closeEditModal()">×</button>
+                <button class="edit-modal-close" id="closeModalBtn">×</button>
             </div>
 
             <div class="edit-modal-body">
@@ -370,10 +423,25 @@
                     <label class="edit-form-label">Display Name</label>
                     <input type="text" id="editDisplayName" class="edit-form-input" placeholder="Your display name">
                 </div>
-
+                
                 <div class="edit-form-group">
                     <label class="edit-form-label">Username</label>
                     <input type="text" id="editUsername" class="edit-form-input" placeholder="username">
+                </div>
+
+                <div class="edit-form-group">
+                    <label class="edit-form-label">Profile Picture</label>
+                    <div class="preview-avatar-container">
+                        <div class="preview-avatar" id="previewAvatar">
+                            👤
+                        </div>
+                        <div style="flex:1;">
+                            <input type="file" id="avatarFileInput" accept="image/*" style="display:none;">
+                            <button class="upload-btn" id="uploadBtn">Choose Image</button>
+                            <div class="helper-text">Or enter URL below</div>
+                        </div>
+                    </div>
+                    <input type="url" id="editAvatarUrl" class="edit-form-input" placeholder="https://example.com/avatar.jpg">
                 </div>
 
                 <div class="edit-form-group">
@@ -381,31 +449,27 @@
                     <textarea id="editBio" class="edit-form-textarea" placeholder="Tell us about yourself..."></textarea>
                 </div>
 
-                <div class="edit-form-group">
-                    <label class="edit-form-label">Avatar URL (optional)</label>
-                    <input type="url" id="editAvatarUrl" class="edit-form-input" placeholder="https://example.com/avatar.jpg">
-                </div>
-
                 <div class="error-message" id="editError"></div>
                 <div class="success-message" id="editSuccess"></div>
             </div>
 
             <div class="edit-modal-footer">
-                <button class="edit-btn-cancel" onclick="closeEditModal()">Cancel</button>
-                <button class="edit-btn-save" id="saveBtn" onclick="saveProfile()">Save Changes</button>
+                <button class="edit-btn-cancel" id="cancelBtn">Cancel</button>
+                <button class="edit-btn-save" id="saveBtn">Save Changes</button>
             </div>
         </div>
     </div>
 
     <script>
+        const API_URL = 'http://localhost:3000';
         const token = localStorage.getItem('authToken');
 
-        // Redirect to login if no token
         if (!token) {
             window.location.href = '/login.html';
         }
 
         let currentUser = null;
+        let selectedImageFile = null;
 
         // Fetch API helper
         async function fetchAPI(endpoint, options = {}) {
@@ -416,25 +480,36 @@
                 }
             };
 
-            const response = await fetch(`http://localhost:3000${endpoint}`, {
-                ...defaultOptions,
-                ...options,
-                headers: { ...defaultOptions.headers, ...options.headers }
-            });
+            try {
+                console.log(`Fetching: ${endpoint}`);
+                const response = await fetch(`${API_URL}${endpoint}`, {
+                    ...defaultOptions,
+                    ...options,
+                    headers: { ...defaultOptions.headers, ...options.headers }
+                });
 
-            if (response.status === 401) {
-                localStorage.removeItem('authToken');
-                window.location.href = '/login.html';
-                return;
+                if (response.status === 401) {
+                    localStorage.removeItem('authToken');
+                    window.location.href = '/login.html';
+                    return;
+                }
+
+                const data = await response.json();
+                console.log(`Response from ${endpoint}:`, data);
+                return data;
+            } catch (error) {
+                console.error(`Error fetching ${endpoint}:`, error);
+                throw error;
             }
-
-            return response.json();
         }
 
         // Load user profile data
         async function loadProfile() {
             try {
+                console.log('Loading profile...');
                 const user = await fetchAPI('/api/users/me');
+                console.log('User data received:', user);
+                
                 currentUser = user;
 
                 // Update profile display
@@ -459,22 +534,37 @@
                     avatarElement.innerHTML = '👤';
                 }
 
-                // Load posts count (you can add this endpoint later)
-                document.getElementById('postsCount').textContent = '0'; // Placeholder
+                // Load posts count
+                document.getElementById('postsCount').textContent = '0';
 
+                console.log('Profile loaded successfully');
             } catch (error) {
                 console.error('Error loading profile:', error);
+                alert('Failed to load profile. Please refresh the page.');
             }
         }
 
         // Show edit modal
         function showEditModal() {
-            if (!currentUser) return;
+            if (!currentUser) {
+                console.error('Current user not loaded');
+                return;
+            }
+
+            console.log('Opening edit modal with user:', currentUser);
 
             document.getElementById('editDisplayName').value = currentUser.displayName || '';
             document.getElementById('editUsername').value = currentUser.username || '';
             document.getElementById('editBio').value = currentUser.bio || '';
             document.getElementById('editAvatarUrl').value = currentUser.avatarUrl || '';
+
+            // Update preview
+            const previewAvatar = document.getElementById('previewAvatar');
+            if (currentUser.avatarUrl && currentUser.avatarUrl.trim() !== '') {
+                previewAvatar.innerHTML = `<img src="${currentUser.avatarUrl}" alt="Preview">`;
+            } else {
+                previewAvatar.innerHTML = '👤';
+            }
 
             document.getElementById('editModal').classList.add('active');
         }
@@ -484,6 +574,30 @@
             document.getElementById('editModal').classList.remove('active');
             document.getElementById('editError').style.display = 'none';
             document.getElementById('editSuccess').style.display = 'none';
+            selectedImageFile = null;
+        }
+
+        // Preview profile picture from file
+        function previewProfilePic(event) {
+            const file = event.target.files[0];
+            if (file) {
+                selectedImageFile = file;
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('previewAvatar').innerHTML = `<img src="${e.target.result}" alt="Preview">`;
+                    document.getElementById('editAvatarUrl').value = '';
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        // Update preview from URL
+        function updatePreview() {
+            const url = document.getElementById('editAvatarUrl').value.trim();
+            if (url) {
+                selectedImageFile = null;
+                document.getElementById('previewAvatar').innerHTML = `<img src="${url}" alt="Preview" onerror="this.parentElement.innerHTML='👤'">`;
+            }
         }
 
         // Save profile changes
@@ -491,7 +605,7 @@
             const displayName = document.getElementById('editDisplayName').value.trim();
             const username = document.getElementById('editUsername').value.trim();
             const bio = document.getElementById('editBio').value.trim();
-            const avatarUrl = document.getElementById('editAvatarUrl').value.trim();
+            let avatarUrl = document.getElementById('editAvatarUrl').value.trim();
 
             const errorEl = document.getElementById('editError');
             const successEl = document.getElementById('editSuccess');
@@ -523,6 +637,15 @@
             saveBtn.textContent = 'Saving...';
 
             try {
+                // If user selected a file, convert to base64
+                if (selectedImageFile) {
+                    avatarUrl = await new Promise((resolve) => {
+                        const reader = new FileReader();
+                        reader.onload = (e) => resolve(e.target.result);
+                        reader.readAsDataURL(selectedImageFile);
+                    });
+                }
+
                 const updates = {
                     displayName,
                     username,
@@ -530,17 +653,21 @@
                     avatarUrl
                 };
 
+                console.log('Saving profile updates:', updates);
+
                 const updatedUser = await fetchAPI('/api/users/me', {
                     method: 'PUT',
                     body: JSON.stringify(updates)
                 });
 
+                console.log('Profile updated:', updatedUser);
+
                 currentUser = updatedUser;
+                selectedImageFile = null;
 
                 successEl.textContent = 'Profile updated successfully!';
                 successEl.style.display = 'block';
 
-                // Reload profile display
                 await loadProfile();
 
                 setTimeout(() => {
@@ -549,13 +676,90 @@
 
             } catch (error) {
                 console.error('Error saving profile:', error);
-                errorEl.textContent = 'Failed to update profile. Please try again.';
+                errorEl.textContent = error.message || 'Failed to update profile. Please try again.';
                 errorEl.style.display = 'block';
             } finally {
                 saveBtn.disabled = false;
                 saveBtn.textContent = 'Save Changes';
             }
         }
+
+        // Show followers list
+        async function showFollowers() {
+            if (!currentUser) return;
+            
+            try {
+                const followers = await fetchAPI(`/api/users/${currentUser.id}/followers`);
+                displayUserList(followers, 'Followers');
+            } catch (error) {
+                console.error('Error loading followers:', error);
+            }
+        }
+
+        // Show following list
+        async function showFollowing() {
+            if (!currentUser) return;
+            
+            try {
+                const following = await fetchAPI(`/api/users/${currentUser.id}/following-list`);
+                displayUserList(following, 'Following');
+            } catch (error) {
+                console.error('Error loading following:', error);
+            }
+        }
+
+        // Display user list modal
+        function displayUserList(users, title) {
+            const modalHTML = `
+                <div class="modal-overlay active" id="userListModal" style="z-index:2000;">
+                    <div class="modal" style="background:#242526;border-radius:12px;width:90%;max-width:500px;max-height:80vh;overflow:hidden;">
+                        <div style="padding:20px;border-bottom:1px solid #3a3b3c;display:flex;justify-content:space-between;align-items:center;">
+                            <div style="font-size:18px;font-weight:600;color:#e4e6eb;">${title}</div>
+                            <button onclick="closeUserListModal()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#8b8d91;padding:0;width:30px;height:30px;">×</button>
+                        </div>
+                        <div style="padding:20px;max-height:400px;overflow-y:auto;">
+                            ${users.length === 0 ? `<div style="text-align:center;color:#8b8d91;">No ${title.toLowerCase()} yet</div>` : ''}
+                            ${users.map(user => `
+                                <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:8px;background:#18191a;margin-bottom:8px;">
+                                    <div style="width:50px;height:50px;border-radius:50%;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);display:flex;align-items:center;justify-content:center;font-size:24px;overflow:hidden;">
+                                        ${user.avatarUrl ? `<img src="${user.avatarUrl}" style="width:100%;height:100%;object-fit:cover;">` : '👤'}
+                                    </div>
+                                    <div style="flex:1;">
+                                        <div style="font-weight:600;font-size:14px;color:#e4e6eb;">${user.displayName || user.username}</div>
+                                        <div style="font-size:13px;color:#8b8d91;">@${user.username}</div>
+                                        <div style="font-size:12px;color:#666;">${user.followersCount} followers</div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            const existing = document.getElementById('userListModal');
+            if (existing) existing.remove();
+            
+            document.body.insertAdjacentHTML('beforeend', modalHTML);
+        }
+
+        // Close user list modal
+        function closeUserListModal() {
+            const modal = document.getElementById('userListModal');
+            if (modal) modal.remove();
+        }
+
+        // Event Listeners
+        document.getElementById('editProfileBtn').addEventListener('click', showEditModal);
+        document.getElementById('closeModalBtn').addEventListener('click', closeEditModal);
+        document.getElementById('cancelBtn').addEventListener('click', closeEditModal);
+        document.getElementById('saveBtn').addEventListener('click', saveProfile);
+        document.getElementById('uploadBtn').addEventListener('click', () => {
+            document.getElementById('avatarFileInput').click();
+        });
+        document.getElementById('avatarFileInput').addEventListener('change', previewProfilePic);
+        document.getElementById('editAvatarUrl').addEventListener('input', updatePreview);
+        document.getElementById('followersBtn').addEventListener('click', showFollowers);
+        document.getElementById('followingBtn').addEventListener('click', showFollowing);
 
         // Close modal when clicking outside
         document.getElementById('editModal').addEventListener('click', function(e) {
@@ -565,7 +769,10 @@
         });
 
         // Load profile on page load
-        document.addEventListener('DOMContentLoaded', loadProfile);
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('Page loaded, initializing...');
+            loadProfile();
+        });
     </script>
 </body>
 </html>
