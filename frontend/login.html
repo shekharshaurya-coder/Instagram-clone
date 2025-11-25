@@ -141,6 +141,7 @@
       });
 
       const data = await response.json();
+      console.log("JWT STORED:", data.token);
 
       if (response.status === 200) {
         if (data.token) {
@@ -192,6 +193,7 @@
       submitBtn.click();
     }
   });
+ 
 </script>
 
 </body>

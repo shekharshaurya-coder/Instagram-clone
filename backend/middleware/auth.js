@@ -24,11 +24,14 @@ async function authMiddleware(req, res, next) {
     if (!user) return res.status(401).json({ message: 'User not found' });
 
     req.user = user;
+    console.log(payload.token);
     return next();
   } catch (err) {
     console.error('Auth middleware error:', err);
     return res.status(401).json({ message: 'Invalid or expired token' });
   }
 }
+
+
 
 module.exports = authMiddleware;

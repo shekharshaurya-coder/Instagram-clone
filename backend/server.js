@@ -15,11 +15,15 @@ const { Types: { ObjectId } } = mongoose;
 const Follow = require('./models/Follow');
 const { Server } = require('socket.io');
 const http = require('http');  
+//const authRoutes = require("./routes/auth.cjs");
+
+
 
 // ============== INITIALIZE APP ==============
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+//app.use("/api/auth", authRoutes);
 
 // Enable CORS for development
 app.use((req, res, next) => {
@@ -393,42 +397,67 @@ app.post("/api/auth/signup", async (req, res) => {
 // LOGIN
 app.post("/api/auth/login", async (req, res) => {
   try {
+    console.log("===== LOGIN ATTEMPT =====");
+    console.log("Username received:", req.body.username);
+
     const { username, password } = req.body;
 
     const user = await User.findOne({ username });
-    if (!user)
+    console.log("User found in DB:", !!user);
+
+    if (!user) {
+      console.log("❌ No user found");
       return res.status(404).json({ message: "Account not found" });
+    }
 
     const ok = await bcrypt.compare(password, user.passwordHash);
-    if (!ok)
-      return res.status(401).json({ message: "Incorrect password" });
+    console.log("Password correct:", ok);
 
-    const token = jwt.sign(
-      { 
-        sub: user._id.toString(), 
-        userId: user.userId,
-        username: user.username 
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    if (!ok) {
+      console.log("❌ Wrong password");
+      return res.status(401).json({ message: "Incorrect password" });
+    }
+
+    // Generate JWT
+    const tokenPayload = {
+      sub: user._id.toString(),
+      username: user.username
+    };
+
+    const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, { expiresIn: "7d" });
+
+    console.log("===== TOKEN GENERATED =====");
+    console.log("User ID (sub):", tokenPayload.sub);
+    console.log("Username:", tokenPayload.username);
+    console.log("JWT Token:", token);
+    console.log("===========================\n");
 
     return res.json({
       token,
       user: {
         id: user._id,
-        userId: user.userId,
         username: user.username,
         displayName: user.displayName || user.username,
         email: user.email,
-        bio: user.bio,
-        avatarUrl: user.avatarUrl
+        bio: user.bio || "",
+        avatarUrl: user.avatarUrl || ""
       }
     });
+
   } catch (err) {
-    console.error('Login error:', err);
-    res.status(500).json({ message: "Server error" });
+    console.error("❌ Login error:", err);
+    res.status(500).json({ message: "Server error", detail: err.message });
   }
+});
+
+//route to check the jwt 
+app.get("/debug/jwt", (req, res) => {
+  const token = jwt.sign(
+    { sub: "USER_ID_HERE", username: "USERNAME_HERE" },
+    process.env.JWT_SECRET,
+    { expiresIn: "7d" }
+  );
+  res.json({ token });
 });
 
 // ============== USER ROUTES ==============
@@ -1006,4 +1035,3 @@ function formatTimestamp(date) {
 // ============== START SERVER ==============
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`✅ Server + Socket.IO running on port ${PORT}`));
-app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
