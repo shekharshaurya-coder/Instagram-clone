@@ -1258,6 +1258,7 @@ async function showMyFollowing() {
     await showFollowingList(currentUser.id);
 }
 
+
 // Update the loadUserData function to also update these counts
 async function loadUserData() {
     try {

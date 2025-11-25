@@ -12,7 +12,7 @@ const Sentiment = require('sentiment');
 const sentimentAnalyzer = new Sentiment();
 const mongoose = require('mongoose');
 const { Types: { ObjectId } } = mongoose;
-const Follow = require('./models/Follow');
+const Follow = require('./models/follow');
 const { Server } = require('socket.io');
 const http = require('http');  
 //const authRoutes = require("./routes/auth.cjs");
@@ -58,6 +58,7 @@ const io = new Server(server, {
     methods: ["GET", "POST"]
   }
 });
+
 
 
 
