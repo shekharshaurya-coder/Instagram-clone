@@ -128,38 +128,128 @@ async function fetchAPI(endpoint, options = {}) {
   return data;
 }
 
-async function loadFeed() {
+let nextCursor = null;
+let isLoading = false;
+
+async function loadFeed(isInitial = false) {
+  if (isLoading) return;
+  isLoading = true;
+
   try {
     const feedContainer = document.getElementById("feed-posts");
-    feedContainer.innerHTML =
-      '<div style="padding:20px;text-align:center;color:#8b8d91;">Loading...</div>';
 
-    const posts = await fetchAPI("/api/posts/feed");
+    if (isInitial) {
+      feedContainer.innerHTML =
+        '<div style="padding:20px;text-align:center;color:#8b8d91;">Loading...</div>';
+      nextCursor = null;
+    }
+
+    const endpoint = nextCursor
+      ? `/api/posts/feed?cursor=${nextCursor}`
+      : "/api/posts/feed";
+
+    console.log("🔍 Fetching feed from:", endpoint);
+    const response = await fetchAPI(endpoint);
+    console.log("📡 API Response:", response);
+
+    // Handle both array (old) and object (new) response formats
+    const posts = Array.isArray(response)
+      ? response
+      : (response && response.posts) || [];
+    const newNextCursor = Array.isArray(response)
+      ? null
+      : (response && response.nextCursor) || null;
+
+    console.log("📦 Posts count:", posts.length, "NextCursor:", newNextCursor);
 
     if (!posts || posts.length === 0) {
-      feedContainer.innerHTML =
-        '<div style="padding:20px;text-align:center;color:#8b8d91;">No posts yet. Be the first to post!</div>';
+      if (isInitial) {
+        feedContainer.innerHTML =
+          '<div style="padding:20px;text-align:center;color:#8b8d91;">No posts yet. Be the first to post!</div>';
+      } else {
+        feedContainer.insertAdjacentHTML(
+          "beforeend",
+          '<div style="padding:20px;text-align:center;color:#8b8d91;">No more posts</div>'
+        );
+      }
+      nextCursor = null;
+      isLoading = false;
       return;
     }
 
-    feedContainer.innerHTML = posts
-      .map((post) => createPostHTML(post))
+    const postsHTML = posts
+      .map((post) => {
+        try {
+          return createPostHTML(post);
+        } catch (e) {
+          console.error("Error creating HTML for post:", post, e);
+          return "";
+        }
+      })
       .join("");
+
+    console.log("✅ Generated HTML length:", postsHTML.length);
+
+    if (isInitial) {
+      feedContainer.innerHTML = postsHTML;
+      console.log("📝 Set initial feed HTML");
+    } else {
+      feedContainer.insertAdjacentHTML("beforeend", postsHTML);
+      console.log("📝 Appended more posts");
+    }
+
+    nextCursor = newNextCursor;
   } catch (error) {
     console.error("Error loading feed:", error);
-    document.getElementById("feed-posts").innerHTML =
-      '<div style="padding:20px;text-align:center;color:#ff7979;">Failed to load feed</div>';
+    if (isInitial) {
+      document.getElementById("feed-posts").innerHTML =
+        '<div style="padding:20px;text-align:center;color:#ff7979;">Failed to load feed</div>';
+    }
+  } finally {
+    isLoading = false;
   }
 }
 // ============== INITIALIZATION ==============
 async function init() {
+  console.log("✅ init() called!");
   try {
     await loadUserData();
-    await loadFeed();
+    await loadFeed(true);
     await checkNotifications();
+
+    // Initialize Socket.IO
+    initSocket();
 
     // Poll for new notifications every 30 seconds
     setInterval(checkNotifications, 30000);
+
+    // Add scroll listener for infinite scroll - listen to .content container, not window!
+    const contentView = document.getElementById("feed-view");
+    if (contentView) {
+      contentView.addEventListener(
+        "scroll",
+        function () {
+          const scrollPos = contentView.scrollTop + contentView.clientHeight;
+          const threshold = contentView.scrollHeight - 500;
+
+          console.log(
+            `📍 Content Scroll: ${Math.round(
+              scrollPos
+            )}px | Threshold: ${Math.round(
+              threshold
+            )}px | Loading: ${isLoading} | HasCursor: ${!!nextCursor}`
+          );
+
+          if (scrollPos >= threshold && !isLoading && nextCursor) {
+            console.log("🔄 LOADING MORE POSTS!");
+            loadFeed();
+          }
+        },
+        { passive: true }
+      );
+    } else {
+      console.error("❌ feed-view container not found!");
+    }
   } catch (error) {
     console.error("Init error:", error);
   }
@@ -926,22 +1016,6 @@ async function updateSidebarMessagesBadge() {
   }
 }
 
-async function init() {
-  try {
-    await loadUserData();
-    await loadFeed();
-    await checkNotifications();
-
-    // Initialize Socket.IO
-    initSocket();
-
-    // Poll for new notifications every 30 seconds
-    setInterval(checkNotifications, 30000);
-  } catch (error) {
-    console.error("Init error:", error);
-  }
-}
-
 // ============== UPDATE showMessages FUNCTION ==============
 function showMessages(event) {
   document
@@ -1517,7 +1591,7 @@ async function submitPost() {
     });
 
     closePostModal();
-    await loadFeed();
+    await loadFeed(true);
   } catch (error) {
     console.error("Error creating post:", error);
     alert("Failed to create post");
@@ -1758,6 +1832,7 @@ async function checkNotifications() {
 
 //for side bar
 document.addEventListener("DOMContentLoaded", () => {
+  console.log("🚀 DOMContentLoaded fired, calling init()...");
   init(); // (your existing init call)
   // Add:
   updateSidebarMessagesBadge();

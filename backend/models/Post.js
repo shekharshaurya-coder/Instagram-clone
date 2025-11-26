@@ -47,6 +47,10 @@ const postSchema = new mongoose.Schema({
   timestamps: true 
 });
 
+// Indexes to improve query performance
+postSchema.index({ createdAt: -1 }); // For sorting posts by time
+postSchema.index({ userId: 1 }); // For fetching posts by a specific user
+
 // ✅ Pre-save hook for auto-increment
 postSchema.pre("save", async function() {
   // Skip if postId already exists

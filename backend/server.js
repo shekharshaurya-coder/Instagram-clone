@@ -957,38 +957,43 @@ app.post("/api/posts", auth, async (req, res) => {
 // GET FEED
 app.get("/api/posts/feed", auth, async (req, res) => {
   try {
-    const cacheKey = cacheHelper.keys.feed();
+    const { cursor } = req.query;
+    const limit = 10; // Number of posts per page
+
+    const cacheKey = cacheHelper.keys.feed(cursor || "first_page");
 
     // Try to get from cache
     const cached = await redisHelpers.getJSON(cacheKey);
     if (cached) {
-      console.log("✅ Feed cache hit");
+      console.log(`✅ Feed cache hit for cursor: ${cursor || "first_page"}`);
       return res.json(cached);
     }
 
-    const posts = await Post.find().sort({ createdAt: -1 }).limit(50).lean();
+    const query = {};
+    if (cursor) {
+      const parsedCursor = new Date(cursor);
+      if (!isNaN(parsedCursor)) {
+        query.createdAt = { $lt: parsedCursor };
+      }
+    }
 
-    // Get user details for each post
-    const userIds = [...new Set(posts.map((p) => p.userId.toString()))];
-    const users = await User.find({ _id: { $in: userIds } })
-      .select("_id username displayName avatarUrl")
+    const posts = await Post.find(query)
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .populate("userId", "username displayName avatarUrl") // Use populate
       .lean();
 
-    const userMap = {};
-    users.forEach((u) => {
-      userMap[u._id.toString()] = u;
-    });
-
     const formattedPosts = posts.map((post) => {
-      const postUser = userMap[post.userId.toString()] || {};
+      const postUser = post.userId || {};
       return {
         id: post._id,
-        username: post.username,
-        displayName: postUser.displayName || post.username,
+        username: postUser.username || post.username,
+        displayName: postUser.displayName || postUser.username,
         avatar: postUser.avatarUrl || "👤",
         content: post.content,
         mediaUrl: post.mediaUrl,
-        timestamp: formatTimestamp(post.createdAt),
+        timestamp: formatTimestamp(post.createdAt), // For display
+        createdAt: post.createdAt, // For cursor
         likes: Array.isArray(post.likes) ? post.likes.length : 0,
         comments: Array.isArray(post.comments) ? post.comments.length : 0,
         liked:
@@ -997,10 +1002,23 @@ app.get("/api/posts/feed", auth, async (req, res) => {
       };
     });
 
-    // Cache for 3 minutes
-    await redisHelpers.setJSON(cacheKey, formattedPosts, { ex: 180 });
+    const nextCursor =
+      formattedPosts.length === limit
+        ? formattedPosts[formattedPosts.length - 1].createdAt.toISOString()
+        : null;
 
-    res.json(formattedPosts);
+    const response = {
+      posts: formattedPosts.map(p => {
+        const { createdAt, ...rest } = p; // Omit createdAt from final post object
+        return rest;
+      }),
+      nextCursor,
+    };
+
+    // Cache for 1 minute
+    await redisHelpers.setJSON(cacheKey, response, { ex: 60 });
+
+    res.json(response);
   } catch (err) {
     console.error("Get feed error:", err);
     res.status(500).json({ message: "Server error" });
@@ -1456,7 +1474,7 @@ const cacheHelper = {
     userProfile: (id) => `user:profile:${id}`,
     followers: (id) => `user:followers:${id}`,
     following: (id) => `user:following:${id}`,
-    feed: () => `feed:posts:latest`,
+    feed: (cursor) => `feed:posts:${cursor || 'latest'}`,
     comments: (postId) => `post:comments:${postId}`,
     unreadNotifications: (userId) => `notif:unread:${userId}`,
     followStatus: (followerId, followeeId) =>
