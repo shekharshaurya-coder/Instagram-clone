@@ -1,216 +1,306 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>SocialSync – Login</title>
-  <style>
-    :root{
-      --bg:#0f0f11;
-      --panel:#151516;
-      --muted:#9b9b9f;
-      --accent:#7b6ef6;
-      --card:#171718;
-      --border:rgba(255,255,255,0.03);
-      font-family: Inter, system-ui, sans-serif;
-    }
-    html,body{
-      height:100%; margin:0;
-      background: #000000;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      color:#e9e9eb;
-    }
-    .card{
-      width:820px;
-      max-width:95%;
-      background:var(--card);
-      border-radius:12px;
-      padding:34px;
-      border:1px solid var(--border);
-      box-shadow:0 4px 18px rgba(0,0,0,0.6);
-    }
-    .card-header{margin-bottom:18px}
-    .card-title{font-size:22px;font-weight:700}
-    .card-sub{font-size:13px;color:var(--muted)}
-
-    .form-wrap{display:flex;gap:40px;}
-    .left-illustration{width:240px;text-align:center;}
-    .illus-circle{width:140px;height:140px;border-radius:50%;overflow:hidden;margin:auto;background:#7b6ef6;}
-    .illus-circle img{width:100%;height:100%;object-fit:cover}
-
-    .form{flex:1}
-    label{display:block;font-size:13px;margin-bottom:8px;color:var(--muted)}
-    input{
-      width:100%;padding:12px 14px;background:var(--panel);
-      border:1px solid var(--border);border-radius:8px;color:#fff;font-size:14px
-    }
-    input:focus{outline:none;border-color:var(--accent)}
-    input::placeholder{color:#555}
-
-    .actions{display:flex;justify-content:space-between;margin-top:16px}
-    .btn{padding:10px 16px;border-radius:10px;cursor:pointer;font-size:14px}
-    .btn-primary{background:var(--accent);color:#fff;font-weight:600;border:none}
-    .btn-primary:hover{background:#6a5ee5}
-    .btn-ghost{background:transparent;border:1px solid var(--border);color:var(--muted);text-decoration:none}
-    .btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
-
-    .error{color:#ff7979;margin-top:8px;font-size:13px;display:none}
-    .helper{margin-top:18px;font-size:13px;color:var(--muted)}
-  </style>
-</head>
-<body>
-
-<section class="card">
-
-  <div class="card-header">
-    <div class="card-title">Welcome to SocialSync</div>
-    <div class="card-sub">Log in to continue</div>
-  </div>
-
-  <div class="form-wrap">
-
-    <div class="left-illustration">
-      <div class="illus-circle">
-        <img src="monkey.jpg" alt="Monkey Cartoon">
-      </div>
-      <p class="illus-text" style="color:var(--muted);font-size:13px;margin-top:12px;">
-        Secure login to access your feed & messages.
-      </p>
-    </div>
-
-    <form id="loginForm" class="form" onsubmit="return false;">
-      
-      <label>Username</label>
-      <input id="username" type="text" required placeholder="shekhar" autocomplete="username">
-
-      <label style="margin-top:14px">Password</label>
-      <div style="position:relative;">
-        <input id="password" type="password" required placeholder="••••••••" autocomplete="current-password" style="padding-right:35px;">
-        <span id="togglePass" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);">👁️</span>
-      </div>
-
-      <div class="actions">
-        <button id="submitBtn" class="btn btn-primary">Sign in</button>
-        <a href="/signup.html" class="btn btn-ghost">Sign up</a>
-      </div>
-
-      <div id="error" class="error"></div>
-      <div id="loading" class="helper" style="display:none;">Checking credentials…</div>
-
-    </form>
-
-  </div>
-
-</section>
-
-<script>
-const submitBtn = document.getElementById('submitBtn');
-const errorEl   = document.getElementById('error');
-const loadingEl = document.getElementById('loading');
-
-function showError(msg){
-  errorEl.style.display = "block";
-  errorEl.textContent = msg;
-}
-function clearError(){
-  errorEl.style.display = "none";
-  errorEl.textContent = "";
-}
-
-submitBtn.addEventListener('click', async () => {
-  clearError();
-
-  const username = document.getElementById('username').value.trim();
-  const password = document.getElementById('password').value;
-
-  if (!username || !password){
-    showError("Enter username & password");
-    return;
-  }
-
-  loadingEl.style.display = "block";
-  submitBtn.disabled = true;
-
-  try{
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password })
-    });
-
-    const data = await res.json();
-
-    if (!res.ok){
-      if (res.status === 404) return showError("User not found");
-      if (res.status === 401) return showError("Incorrect password");
-      return showError(data.message || "Login failed");
-    }
-
-    // 🔥 STORE TOKEN CORRECTLY - ensure it's a plain string
-    if (data.token){
-      // Clean the token - remove any accidental wrapping quotes
-      let cleanToken = String(data.token).trim();
-      // Remove wrapping quotes if present: "eyJhb..." => eyJhb...
-      if (cleanToken.startsWith('"') && cleanToken.endsWith('"')) {
-        cleanToken = cleanToken.slice(1, -1);
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>SocialSync – Login</title>
+    <style>
+      :root {
+        --bg: #0f0f11;
+        --panel: #151516;
+        --muted: #9b9b9f;
+        --accent: #7b6ef6;
+        --card: #171718;
+        --border: rgba(255, 255, 255, 0.03);
+        font-family: Inter, system-ui, sans-serif;
       }
-      
-      localStorage.setItem("token", cleanToken);
-      console.log("TOKEN STORED (length):", cleanToken.length);
-      console.log("TOKEN PREVIEW:", cleanToken.substring(0, 30) + "...");
-      
-      // Verify it was stored correctly
-      const storedToken = localStorage.getItem("token");
-      if (storedToken !== cleanToken) {
-        console.error("WARNING: Token storage mismatch!");
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: #000000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #e9e9eb;
       }
-      
-      console.log("✅ Token verified in localStorage");
-      console.log("🔄 Redirecting to index.html...");
-      
-      // Wait a tiny bit to ensure storage completes, then redirect
-      setTimeout(() => {
-        window.location.href = "/index.html";
-      }, 100);
-      
-    } else {
-      showError("No token received from server");
-      loadingEl.style.display = "none";
-      submitBtn.disabled = false;
-      return;
-    }
+      .card {
+        width: 820px;
+        max-width: 95%;
+        background: var(--card);
+        border-radius: 12px;
+        padding: 34px;
+        border: 1px solid var(--border);
+        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6);
+      }
+      .card-header {
+        margin-bottom: 18px;
+      }
+      .card-title {
+        font-size: 22px;
+        font-weight: 700;
+      }
+      .card-sub {
+        font-size: 13px;
+        color: var(--muted);
+      }
 
-  } catch(err){
-    showError("Network error, try again.");
-    console.error("Login error:", err);
-  }
+      .form-wrap {
+        display: flex;
+        gap: 40px;
+      }
+      .left-illustration {
+        width: 240px;
+        text-align: center;
+      }
+      .illus-circle {
+        width: 140px;
+        height: 140px;
+        border-radius: 50%;
+        overflow: hidden;
+        margin: auto;
+        background: #7b6ef6;
+      }
+      .illus-circle img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
 
-  loadingEl.style.display = "none";
-  submitBtn.disabled = false;
-});
+      .form {
+        flex: 1;
+      }
+      label {
+        display: block;
+        font-size: 13px;
+        margin-bottom: 8px;
+        color: var(--muted);
+      }
+      input {
+        width: 100%;
+        padding: 12px 14px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: #fff;
+        font-size: 14px;
+      }
+      input:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+      input::placeholder {
+        color: #555;
+      }
 
-// Toggle password visibility
-document.getElementById("togglePass").addEventListener("click", ()=>{
-  const inp = document.getElementById("password");
-  const isPwd = inp.type === "password";
-  inp.type = isPwd ? "text" : "password";
-  togglePass.textContent = isPwd ? "🙈" : "👁️";
-});
+      .actions {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 16px;
+      }
+      .btn {
+        padding: 10px 16px;
+        border-radius: 10px;
+        cursor: pointer;
+        font-size: 14px;
+      }
+      .btn-primary {
+        background: var(--accent);
+        color: #fff;
+        font-weight: 600;
+        border: none;
+      }
+      .btn-primary:hover {
+        background: #6a5ee5;
+      }
+      .btn-ghost {
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--muted);
+        text-decoration: none;
+      }
+      .btn-ghost:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
 
-// Enter key support
-document.getElementById("password").addEventListener("keypress", (e) => {
-  if (e.key === "Enter") {
-    submitBtn.click();
-  }
-});
-document.getElementById("username").addEventListener("keypress", (e) => {
-  if (e.key === "Enter") {
-    submitBtn.click();
-  }
-});
-</script>
+      .error {
+        color: #ff7979;
+        margin-top: 8px;
+        font-size: 13px;
+        display: none;
+      }
+      .helper {
+        margin-top: 18px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <section class="card" style="">
+      <div class="card-header">
+        <div class="card-title">Welcome to SocialSync</div>
+        <div class="card-sub">Log in to continue</div>
+      </div>
 
-</body>
+      <div class="form-wrap">
+        <div class="left-illustration">
+          <div class="illus-circle">
+            <img src="monkey.jpg" alt="Monkey Cartoon" />
+          </div>
+          <p
+            class="illus-text"
+            style="color: var(--muted); font-size: 13px; margin-top: 12px"
+          >
+            Secure login to access your feed & messages.
+          </p>
+        </div>
+
+        <form id="loginForm" class="form" onsubmit="return false;">
+          <label>Username</label>
+          <input
+            id="username"
+            type="text"
+            required
+            placeholder="username"
+            autocomplete="username"
+          />
+
+          <label style="margin-top: 14px">Password</label>
+          <div style="position: relative">
+            <input id="password" type="password" required placeholder="••••••••"
+            autocomplete="current-password" " />
+            <span
+              id="togglePass"
+              style="
+                position: absolute;
+                right: 10px;
+                top: 50%;
+                transform: translateY(-50%);
+                cursor: pointer;
+                color: var(--muted);
+              "
+              >👁️</span
+            >
+          </div>
+
+          <div class="actions">
+            <button id="submitBtn" class="btn btn-primary">Sign in</button>
+            <a href="/signup.html" class="btn btn-ghost">Sign up</a>
+          </div>
+
+          <div id="error" class="error"></div>
+          <div id="loading" class="helper" style="display: none">
+            Checking credentials…
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <script>
+      const submitBtn = document.getElementById("submitBtn");
+      const errorEl = document.getElementById("error");
+      const loadingEl = document.getElementById("loading");
+
+      function showError(msg) {
+        errorEl.style.display = "block";
+        errorEl.textContent = msg;
+      }
+      function clearError() {
+        errorEl.style.display = "none";
+        errorEl.textContent = "";
+      }
+
+      submitBtn.addEventListener("click", async () => {
+        clearError();
+
+        const username = document.getElementById("username").value.trim();
+        const password = document.getElementById("password").value;
+
+        if (!username || !password) {
+          showError("Enter username & password");
+          return;
+        }
+
+        loadingEl.style.display = "block";
+        submitBtn.disabled = true;
+
+        try {
+          const res = await fetch("/api/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, password }),
+          });
+
+          const data = await res.json();
+
+          if (!res.ok) {
+            if (res.status === 404) return showError("User not found");
+            if (res.status === 401) return showError("Incorrect password");
+            return showError(data.message || "Login failed");
+          }
+
+          // 🔥 STORE TOKEN CORRECTLY - ensure it's a plain string
+          if (data.token) {
+            // Clean the token - remove any accidental wrapping quotes
+            let cleanToken = String(data.token).trim();
+            // Remove wrapping quotes if present: "eyJhb..." => eyJhb...
+            if (cleanToken.startsWith('"') && cleanToken.endsWith('"')) {
+              cleanToken = cleanToken.slice(1, -1);
+            }
+
+            localStorage.setItem("token", cleanToken);
+            console.log("TOKEN STORED (length):", cleanToken.length);
+            console.log("TOKEN PREVIEW:", cleanToken.substring(0, 30) + "...");
+
+            // Verify it was stored correctly
+            const storedToken = localStorage.getItem("token");
+            if (storedToken !== cleanToken) {
+              console.error("WARNING: Token storage mismatch!");
+            }
+
+            console.log("✅ Token verified in localStorage");
+            console.log("🔄 Redirecting to index.html...");
+
+            // Wait a tiny bit to ensure storage completes, then redirect
+            setTimeout(() => {
+              window.location.href = "/index.html";
+            }, 100);
+          } else {
+            showError("No token received from server");
+            loadingEl.style.display = "none";
+            submitBtn.disabled = false;
+            return;
+          }
+        } catch (err) {
+          showError("Network error, try again.");
+          console.error("Login error:", err);
+        }
+
+        loadingEl.style.display = "none";
+        submitBtn.disabled = false;
+      });
+
+      // Toggle password visibility
+      document.getElementById("togglePass").addEventListener("click", () => {
+        const inp = document.getElementById("password");
+        const isPwd = inp.type === "password";
+        inp.type = isPwd ? "text" : "password";
+        togglePass.textContent = isPwd ? "🙈" : "👁️";
+      });
+
+      // Enter key support
+      document.getElementById("password").addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+          submitBtn.click();
+        }
+      });
+      document.getElementById("username").addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+          submitBtn.click();
+        }
+      });
+    </script>
+  </body>
 </html>

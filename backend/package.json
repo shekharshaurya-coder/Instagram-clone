@@ -11,7 +11,9 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "nodemon": "^3.1.11",
     "sentiment": "^5.0.2",
     "socket.io": "^4.8.1"
-  }
+  },
+  "type": "commonjs"
 }
