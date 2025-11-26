@@ -1337,3 +1337,41 @@ body {
     margin-right: auto;
   }
 }
+/* Comment Styles */
+.comments-section {
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.comment-item {
+  transition: background 0.2s;
+}
+
+.comment-item:hover {
+  background: #1f2023 !important;
+}
+
+/* Fixed: Use attribute selector instead of template literal */
+input[id^="comment-input-"]:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+/* Additional comment input styling */
+input[id^="comment-input-"] {
+  transition: border-color 0.2s;
+}
+
+input[id^="comment-input-"]:hover {
+  border-color: #4a5568;
+}
