@@ -17,11 +17,14 @@ async function fetchAPI(endpoint, options = {}) {
     },
   };
 
-  const response = await fetch(`http://localhost:3000${endpoint}`, {
-    ...defaultOptions,
-    ...options,
-    headers: { ...defaultOptions.headers, ...options.headers },
-  });
+  const response = await fetch(
+    `http://${window.location.hostname}:3000${endpoint}`,
+    {
+      ...defaultOptions,
+      ...options,
+      headers: { ...defaultOptions.headers, ...options.headers },
+    }
+  );
 
   if (response.status === 401) {
     // Token expired or invalid
