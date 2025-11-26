@@ -384,12 +384,15 @@
                     <div class="profile-username" id="profileUsername">@username</div>
                     <div class="profile-stats">
                         <div class="stat-item" id="followersBtn">
+                            
                             <div class="stat-number" id="followersCount">0</div>
                             <div class="stat-label">Followers</div>
                         </div>
                         <div class="stat-item" id="followingBtn">
                             <div class="stat-number" id="followingCount">0</div>
                             <div class="stat-label">Following</div>
+                            
+
                         </div>
                         <div class="stat-item">
                             <div class="stat-number" id="postsCount">0</div>
@@ -459,6 +462,8 @@
             </div>
         </div>
     </div>
+<div id="followersContainer" style="display:none; position:absolute; z-index:9999;"></div>
+<div id="followingContainer" style="display:none; position:absolute; z-index:9999;"></div>
 
     <script>
         const API_URL = 'http://localhost:3000';
@@ -685,29 +690,85 @@
         }
 
         // Show followers list
-        async function showFollowers() {
-            if (!currentUser) return;
-            
-            try {
-                const followers = await fetchAPI(`/api/users/${currentUser.id}/followers`);
-                displayUserList(followers, 'Followers');
-            } catch (error) {
-                console.error('Error loading followers:', error);
-            }
-        }
+/* fallback placeholder (you uploaded this file) */
+const PLACEHOLDER = 'monkey.jpg';
 
-        // Show following list
-        async function showFollowing() {
-            if (!currentUser) return;
-            
-            try {
-                const following = await fetchAPI(`/api/users/${currentUser.id}/following-list`);
-                displayUserList(following, 'Following');
-            } catch (error) {
-                console.error('Error loading following:', error);
-            }
-        }
+/* small helper to render an array of users into a container element */
+function renderDropdown(containerId, users, anchorEl) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.style.display = 'block';
+  container.style.width = '320px';
+  container.style.background = '#111';
+  container.style.border = '1px solid rgba(255,255,255,0.06)';
+  container.style.borderRadius = '10px';
+  container.style.padding = '10px';
+  container.innerHTML = users.map(user => {
+    const avatar = user.avatarUrl || PLACEHOLDER;
+    const count = user.followerCount ?? 0;
+    return `
+      <div style="display:flex;gap:12px;padding:12px;border-radius:8px;align-items:center;">
+        <img src="${avatar}" style="width:56px;height:56px;border-radius:50%;object-fit:cover;" onerror="this.src='${PLACEHOLDER}'" />
+        <div style="flex:1;">
+          <div style="font-weight:600;color:#e4e6eb">${escapeHtml(user.name || user.username)}</div>
+          <div style="color:#8b8d91">@${escapeHtml(user.username)}</div>
+          <div style="color:#666;font-size:12px">${count} follower${count===1?'':'s'}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
 
+  // position under anchor
+  if (anchorEl) {
+    const rect = anchorEl.getBoundingClientRect();
+    container.style.left = (rect.left) + 'px';
+    container.style.top = (rect.bottom + 8) + 'px';
+  }
+}
+
+/* helper escape to avoid injection */
+function escapeHtml(s='') {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* show followers/following using your endpoints */
+async function showFollowers() {
+  const userId = currentUser.id; // your existing variable
+  const anchor = document.getElementById('followersBtn');
+  try {
+    const res = await fetch(`/api/users/${userId}/followers`);
+    const data = await res.json();
+    if (!Array.isArray(data)) return renderDropdown('followersContainer', [], anchor);
+    renderDropdown('followersContainer', data, anchor);
+  } catch (err) {
+    console.error(err);
+    renderDropdown('followersContainer', [], anchor);
+  }
+}
+
+async function showFollowing() {
+  const userId = currentUser.id;
+  const anchor = document.getElementById('followingBtn');
+  try {
+    const res = await fetch(`/api/users/${userId}/following-list`);
+    const data = await res.json();
+    if (!Array.isArray(data)) return renderDropdown('followingContainer', [], anchor);
+    renderDropdown('followingContainer', data, anchor);
+  } catch (err) {
+    console.error(err);
+    renderDropdown('followingContainer', [], anchor);
+  }
+}
+
+/* close dropdown on outside click */
+window.addEventListener('click', (e) => {
+  if (!e.target.closest('#followersContainer') && !e.target.closest('#followersBtn')) {
+    document.getElementById('followersContainer').style.display = 'none';
+  }
+  if (!e.target.closest('#followingContainer') && !e.target.closest('#followingBtn')) {
+    document.getElementById('followingContainer').style.display = 'none';
+  }
+});
         // Display user list modal
         function displayUserList(users, title) {
             const modalHTML = `
@@ -722,7 +783,7 @@
                             ${users.map(user => `
                                 <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:8px;background:#18191a;margin-bottom:8px;">
                                     <div style="width:50px;height:50px;border-radius:50%;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);display:flex;align-items:center;justify-content:center;font-size:24px;overflow:hidden;">
-                                        ${user.avatarUrl ? `<img src="${user.avatarUrl}" style="width:100%;height:100%;object-fit:cover;">` : '👤'}
+                                        ${user.avatarUrl ? `<img src="${user.avatarUrl}|| style="width:100%;height:100%;object-fit:cover;">` : '👤'}
                                     </div>
                                     <div style="flex:1;">
                                         <div style="font-weight:600;font-size:14px;color:#e4e6eb;">${user.displayName || user.username}</div>
@@ -758,8 +819,8 @@
         });
         document.getElementById('avatarFileInput').addEventListener('change', previewProfilePic);
         document.getElementById('editAvatarUrl').addEventListener('input', updatePreview);
-        document.getElementById('followersBtn').addEventListener('click', showFollowers);
-        document.getElementById('followingBtn').addEventListener('click', showFollowing);
+        //document.getElementById('followersBtn').addEventListener('click', showFollowers);
+        //document.getElementById('followingBtn').addEventListener('click', showFollowing);
 
         // Close modal when clicking outside
         document.getElementById('editModal').addEventListener('click', function(e) {
@@ -773,6 +834,89 @@
             console.log('Page loaded, initializing...');
             loadProfile();
         });
+
+        
+/**
+ * Render a list of user objects into a container.
+ * Expects each user to have: { id, username, name, avatarUrl, followerCount }
+ */
+function displayUserList(containerSelector, users) {
+  const container = document.querySelector(containerSelector);
+  if (!container) return console.warn('no container', containerSelector);
+
+  if (!Array.isArray(users)) {
+    console.error('displayUserList expected array, got:', users);
+    container.innerHTML = '<div style="color:#aaa;padding:12px;">No users to display</div>';
+    return;
+  }
+
+  container.innerHTML = users.map(user => {
+    const count = user.followerCount ?? 0;
+    return `
+      <div style="display:flex;gap:12px;padding:14px;border-radius:10px;background:#111;margin-bottom:10px;align-items:center;">
+        <img src="${user.avatarUrl || "monkey.jpg"}" style="width:56px;height:56px;border-radius:50%;object-fit:cover;" />
+        <div style="flex:1;">
+          <div style="font-weight:600;font-size:14px;color:#e4e6eb;">${escapeHtml(user.name || user.username)}</div>
+          <div style="font-size:13px;color:#8b8d91;">@${escapeHtml(user.username)}</div>
+          <div style="font-size:12px;color:#666;">${count} follower${count === 1 ? '' : 's'}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+
+function escapeHtml(str = '') {
+  return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
+}
+document.querySelectorAll('img').forEach(img => {
+  try { img.onerror = null; img.src = '/monkey.jpg'; } catch(e) {}
+});
+// FOLLOWERS HOVER
+const followersBtn = document.getElementById('followersBtn');
+const followersBox = document.getElementById('followersContainer');
+
+followersBtn.addEventListener('mouseenter', () => {
+  showFollowers(); // fetch & display
+  followersBox.style.display = 'block';
+});
+
+followersBtn.addEventListener('mouseleave', () => {
+  setTimeout(() => {
+    if (!followersBox.matches(':hover')) {
+      followersBox.style.display = 'none';
+    }
+  }, 150);
+});
+
+followersBox.addEventListener('mouseleave', () => {
+  followersBox.style.display = 'none';
+});
+
+
+// FOLLOWING HOVER
+const followingBtn = document.getElementById('followingBtn');
+const followingBox = document.getElementById('followingContainer');
+
+followingBtn.addEventListener('mouseenter', () => {
+  showFollowing(); // fetch & display
+  followingBox.style.display = 'block';
+});
+
+followingBtn.addEventListener('mouseleave', () => {
+  setTimeout(() => {
+    if (!followingBox.matches(':hover')) {
+      followingBox.style.display = 'none';
+    }
+  }, 150);
+});
+
+followingBox.addEventListener('mouseleave', () => {
+  followingBox.style.display = 'none';
+});
+//messges done 
+
+        
     </script>
 </body>
 </html>

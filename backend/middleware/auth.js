@@ -19,19 +19,27 @@ async function authMiddleware(req, res, next) {
 
   try {
     const payload = jwt.verify(token, JWT_SECRET);
-    // payload.sub should be the Mongo _id string (set when you sign token)
-    const user = await User.findById(payload.sub).select('-passwordHash');
+
+    // TEMP DEBUG — remove after testing
+    console.log('🔥 AUTH MIDDLEWARE LOADED FROM FILE:', __filename);
+    console.log('🔥 PAYLOAD SERVER SEES:', payload);
+
+    // Accept common id claim names (sub, id, _id, userId)
+    const userId = payload.userId || payload.id || payload._id || payload.sub;
+    if (!userId) {
+      console.warn('Auth failed - token payload missing user id:', payload);
+      return res.status(401).json({ message: 'Invalid token payload' });
+    }
+
+    const user = await User.findById(userId).select('-passwordHash');
     if (!user) return res.status(401).json({ message: 'User not found' });
 
     req.user = user;
-    console.log(payload.token);
-    return next();
+    next();
   } catch (err) {
     console.error('Auth middleware error:', err);
     return res.status(401).json({ message: 'Invalid or expired token' });
   }
 }
-
-
 
 module.exports = authMiddleware;

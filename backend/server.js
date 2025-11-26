@@ -12,10 +12,14 @@ const Sentiment = require('sentiment');
 const sentimentAnalyzer = new Sentiment();
 const mongoose = require('mongoose');
 const { Types: { ObjectId } } = mongoose;
-const Follow = require('./models/follow');
+const Follow = require('./models/Follow');
 const { Server } = require('socket.io');
 const http = require('http');  
+const { Types } = require('mongoose');
 //const authRoutes = require("./routes/auth.cjs");
+const notificationsRouter = require('./routes/notifications'); // path you chose
+const messagesRouter = require('./routes/messages');
+
 
 
 
@@ -23,7 +27,13 @@ const http = require('http');
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.static("frontend"));
 //app.use("/api/auth", authRoutes);
+app.use('/api/notifications', notificationsRouter);
+
+// if using socket.io, attach io to app so routes can emit
+
+
 
 // Enable CORS for development
 app.use((req, res, next) => {
@@ -58,7 +68,7 @@ const io = new Server(server, {
     methods: ["GET", "POST"]
   }
 });
-
+app.set('io', io); // after io created
 
 
 
@@ -75,6 +85,102 @@ app.use((req, res, next) => {
   }
   next();
 });
+//for messages 
+app.use('/api', messagesRouter);
+app.use('/api/conversations', auth, messagesRouter);  // ensure auth is used here
+//following list end points 
+
+
+// ==============================
+// GET FOLLOWERS OF A USER
+// ==============================
+// GET followers (users who follow :id) with followerCount
+app.get('/api/users/:id/followers', async (req, res) => {
+  try {
+    const userId = req.params.id;
+    console.log('[route] GET /api/users/:id/followers ->', userId);
+
+    const followDocs = await Follow.find({ followee: userId })
+      .populate('follower', 'username name avatarUrl');
+
+    if (!followDocs || followDocs.length === 0) {
+      return res.json([]);
+    }
+
+    const userIds = followDocs
+      .map(f => f.follower && f.follower._id)
+      .filter(Boolean)
+      .map(id => id.toString());
+
+    const counts = await Follow.aggregate([
+      { $match: { followee: { $in: userIds.map(id => new  Types.ObjectId(id)) } } },
+      { $group: { _id: '$followee', count: { $sum: 1 } } }
+    ]);
+
+    const countMap = counts.reduce((m, c) => { m[c._id.toString()] = c.count; return m; }, {});
+
+    const followers = followDocs.map(f => {
+      const u = f.follower;
+      return {
+        id: u._id,
+        username: u.username,
+        name: u.name,
+        avatarUrl: u.avatarUrl || null,
+        followerCount: countMap[u._id.toString()] || 0
+      };
+    });
+
+    return res.json(followers);
+  } catch (err) {
+    console.error('Error in /api/users/:id/followers:', err);
+    // dev-only: send stack for quick debugging; remove in prod
+    return res.status(500).json({ error: 'Server error', message: err.message, stack: err.stack });
+  }
+});
+
+app.get('/api/users/:id/following-list', async (req, res) => {
+  try {
+    const userId = req.params.id;
+    console.log('[route] GET /api/users/:id/following-list ->', userId);
+
+    const followDocs = await Follow.find({ follower: userId })
+      .populate('followee', 'username name avatarUrl');
+
+    if (!followDocs || followDocs.length === 0) {
+      return res.json([]);
+    }
+
+    const userIds = followDocs
+      .map(f => f.followee && f.followee._id)
+      .filter(Boolean)
+      .map(id => id.toString());
+
+    const counts = await Follow.aggregate([
+      { $match: { followee: { $in: userIds.map(id =>new Types.ObjectId(id)) } } },
+      { $group: { _id: '$followee', count: { $sum: 1 } } }
+    ]);
+
+    const countMap = counts.reduce((m, c) => { m[c._id.toString()] = c.count; return m; }, {});
+
+    const following = followDocs.map(f => {
+      const u = f.followee;
+      return {
+        id: u._id,
+        username: u.username,
+        name: u.name,
+        avatarUrl: u.avatarUrl || null,
+        followerCount: countMap[u._id.toString()] || 0
+      };
+    });
+
+    return res.json(following);
+  } catch (err) {
+    console.error('Error in /api/users/:id/following-list:', err);
+    // dev-only: send stack for quick debugging; remove in prod
+    return res.status(500).json({ error: 'Server error', message: err.message, stack: err.stack });
+  }
+});
+
 
 // Serve static files
 app.use(express.static(path.join(__dirname, '..', 'frontend')));
@@ -137,66 +243,109 @@ io.on('connection', (socket) => {
   });
   
   // Handle new message
-  socket.on('send_message', async (data) => {
+  // Handle new message
+// Find this section in your server.js (around line 150-200)
+// Replace the existing socket.on('send_message') handler with this:
+
+// Handle new message
+socket.on('send_message', async (data) => {
+  try {
+    const Message = require('./models/Message');
+    const Notification = require('./models/Notification');
+    
+    console.log('📤 Sending message from:', socket.username, 'to:', data.recipientId);
+    
+    // Create conversation ID (sorted user IDs)
+    const conversationId = [socket.userId, data.recipientId].sort().join('_');
+    
+    // Save message to database
+    const newMessage = await Message.create({
+      conversationId: conversationId,
+      sender: socket.userId,
+      recipients: [data.recipientId],
+      text: data.text,
+      deliveredTo: [],
+      readBy: []
+    });
+    
+    console.log('✅ Message saved to database:', newMessage._id);
+    
+    // Populate sender info
+    const populatedMessage = await Message.findById(newMessage._id)
+      .populate('sender', 'username displayName avatarUrl')
+      .lean();
+    
+    const messageData = {
+      id: populatedMessage._id,
+      conversationId: conversationId,
+      sender: {
+        id: populatedMessage.sender._id,
+        username: populatedMessage.sender.username,
+        displayName: populatedMessage.sender.displayName || populatedMessage.sender.username,
+        avatarUrl: populatedMessage.sender.avatarUrl
+      },
+      text: populatedMessage.text,
+      createdAt: populatedMessage.createdAt,
+      delivered: false,
+      read: false
+    };
+    
+    // ✅ CREATE NOTIFICATION FOR RECIPIENT
     try {
-      const Message = require('./models/Message');
-      
-      // Create conversation ID (sorted user IDs)
-      const conversationId = [socket.userId, data.recipientId].sort().join('_');
-      
-      // Save message to database
-      const newMessage = await Message.create({
-        conversationId: conversationId,
-        sender: socket.userId,
-        recipients: [data.recipientId],
-        text: data.text,
-        deliveredTo: [],
-        readBy: []
+      const notification = await Notification.create({
+        user: data.recipientId,
+        actor: socket.userId,
+        verb: 'system',
+        targetType: 'Message',
+        targetId: newMessage._id,
+        read: false
       });
       
-      // Populate sender info
-      const populatedMessage = await Message.findById(newMessage._id)
-        .populate('sender', 'username displayName avatarUrl')
-        .lean();
+      console.log('✅ Notification created:', notification._id);
       
-      const messageData = {
-        id: populatedMessage._id,
-        conversationId: conversationId,
-        sender: {
-          id: populatedMessage.sender._id,
-          username: populatedMessage.sender.username,
-          displayName: populatedMessage.sender.displayName || populatedMessage.sender.username,
-          avatarUrl: populatedMessage.sender.avatarUrl
-        },
-        text: populatedMessage.text,
-        createdAt: populatedMessage.createdAt,
-        delivered: false,
-        read: false
-      };
-      
-      // Send to sender (confirmation)
-      socket.emit('message_sent', messageData);
-      
-      // Send to recipient if online
+      // Emit notification event to recipient
       const recipientSocketId = connectedUsers.get(data.recipientId);
       if (recipientSocketId) {
-        io.to(recipientSocketId).emit('new_message', messageData);
-        
-        // Mark as delivered
-        await Message.findByIdAndUpdate(newMessage._id, {
-          $addToSet: { deliveredTo: data.recipientId }
+        io.to(recipientSocketId).emit('new_notification', {
+          type: 'message',
+          from: socket.username,
+          fromDisplayName: populatedMessage.sender.displayName || socket.username,
+          message: data.text.substring(0, 100),
+          notificationId: notification._id
         });
-        
-        socket.emit('message_delivered', { messageId: newMessage._id });
       }
-      
-      console.log('📩 Message sent:', socket.username, '→', data.recipientId);
-      
-    } catch (error) {
-      console.error('Error sending message:', error);
-      socket.emit('message_error', { error: 'Failed to send message' });
+    } catch (notifErr) {
+      console.error('❌ Failed to create notification:', notifErr);
+      // Don't fail the whole message send if notification fails
     }
-  });
+    
+    // Send to sender (confirmation)
+    socket.emit('message_sent', messageData);
+    
+    // Send to recipient if online
+    const recipientSocketId = connectedUsers.get(data.recipientId);
+    if (recipientSocketId) {
+      io.to(recipientSocketId).emit('new_message', messageData);
+      
+      // Mark as delivered
+      await Message.findByIdAndUpdate(newMessage._id, {
+        $addToSet: { deliveredTo: data.recipientId }
+      });
+      
+      socket.emit('message_delivered', { messageId: newMessage._id });
+      
+      console.log('✅ Message delivered to online recipient');
+    } else {
+      console.log('📪 Recipient offline - notification will wait');
+    }
+    
+    console.log('📩 Message send complete:', socket.username, '→', data.recipientId);
+    
+  } catch (error) {
+    console.error('❌ Error sending message:', error);
+    socket.emit('message_error', { error: 'Failed to send message' });
+  }
+});
   
   // Handle message read
   socket.on('mark_read', async (data) => {

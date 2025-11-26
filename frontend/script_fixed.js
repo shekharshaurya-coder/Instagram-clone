@@ -1,6 +1,6 @@
 // script.js - COMPLETELY FIXED VERSION
 const API_URL = 'http://localhost:3000';
-const token = localStorage.getItem('authToken');
+const token = localStorage.getItem('token');
 
 // Redirect to login if no token
 if (!token) {
@@ -8,54 +8,122 @@ if (!token) {
 }
 
 let currentUser = null;
+// AUTH CHECK HELPER - Add this at the TOP of your script_fixed.js
+
+// ===== AUTHENTICATION CHECK =====
+(function checkAuth() {
+  // Skip auth check if we're on login or signup page
+  const currentPage = window.location.pathname;
+  if (currentPage.includes('login.html') || currentPage.includes('signup.html')) {
+    console.log('🟡 On login/signup page - skipping auth check');
+    return;
+  }
+
+  console.log('🔐 Checking authentication...');
+  
+  // Get token from localStorage
+  let token = localStorage.getItem('token');
+  
+  if (!token) {
+    console.error('❌ No token found - redirecting to login');
+    window.location.href = '/login.html';
+    return;
+  }
+  
+  // Clean token (remove any wrapping quotes)
+  token = token.replace(/^"(.*)"$/, '$1').trim();
+  
+  console.log('✅ Token found (length):', token.length);
+  console.log('✅ Token preview:', token.substring(0, 30) + '...');
+  
+  // Validate token format (JWT should have 3 parts)
+  const parts = token.split('.');
+  if (parts.length !== 3) {
+    console.error('❌ Invalid token format - redirecting to login');
+    localStorage.removeItem('token');
+    window.location.href = '/login.html';
+    return;
+  }
+  
+  console.log('✅ Token format valid (3 parts)');
+  
+  // Try to decode payload to check expiry
+  try {
+    const payload = JSON.parse(atob(parts[1]));
+    console.log('✅ Token payload:', payload);
+    
+    if (payload.exp) {
+      const expiry = new Date(payload.exp * 1000);
+      const now = new Date();
+      
+      if (now >= expiry) {
+        console.error('❌ Token expired at:', expiry);
+        localStorage.removeItem('token');
+        window.location.href = '/login.html';
+        return;
+      }
+      
+      console.log('✅ Token valid until:', expiry);
+    }
+  } catch (e) {
+    console.warn('⚠️ Could not decode token payload:', e);
+    // Continue anyway - let the server validate
+  }
+  
+  console.log('✅ Auth check passed - continuing to load page');
+})();
+
+// ===== EXAMPLE: How your existing code should check auth =====
+// If you have code that redirects to login, make sure it's NOT running immediately
+// Bad example:
+// if (!localStorage.getItem('token')) window.location.href = '/login.html';
+
+// Good example:
+// document.addEventListener('DOMContentLoaded', () => {
+//   // Auth check already happened above, so just verify token exists
+//   if (!localStorage.getItem('token')) {
+//     // This should rarely happen since the check above redirects first
+//     return;
+//   }
+//   // ... rest of your code
+// });
 
 // ============== API HELPER (SINGLE DEFINITION) ==============
 async function fetchAPI(endpoint, options = {}) {
-    const defaultOptions = {
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-        }
-    };
+  const token = options.token || localStorage.getItem('token') || '';
 
-    try {
-        console.log(`API Call: ${options.method || 'GET'} ${endpoint}`);
-        
-        const response = await fetch(`${API_URL}${endpoint}`, {
-            ...defaultOptions,
-            ...options,
-            headers: { ...defaultOptions.headers, ...options.headers }
-        });
+  const defaultOptions = {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    },
+    credentials: 'include'
+  };
 
-        console.log(`API Response: ${response.status} ${endpoint}`);
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    ...defaultOptions,
+    ...options,
+    headers: { ...defaultOptions.headers, ...(options.headers || {}) }
+  });
 
-        if (response.status === 401) {
-            console.error('Unauthorized - redirecting to login');
-            localStorage.removeItem('authToken');
-            window.location.href = '/login.html';
-            return;
-        }
+  if (response.status === 401) {
+    console.error('Unauthorized - redirecting to login');
+    localStorage.removeItem('token');
+    window.location.href = '/login.html';
+    return;
+  }
 
-        const contentType = response.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) {
-            const text = await response.text();
-            console.error('Non-JSON response:', text);
-            throw new Error('Server returned non-JSON response');
-        }
+  const ct = response.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) {
+    const text = await response.text();
+    throw new Error('Server returned non-JSON: ' + text);
+  }
 
-        const data = await response.json();
-        
-        if (!response.ok) {
-            console.error('API Error:', data);
-            throw new Error(data.message || `Request failed (${response.status})`);
-        }
-        
-        return data;
-    } catch (error) {
-        console.error('API Error:', error);
-        throw error;
-    }
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.message || `Request failed (${response.status})`);
+  return data;
 }
+
 async function loadFeed() {
     try {
         const feedContainer = document.getElementById('feed-posts');
@@ -119,7 +187,7 @@ function initSocket() {
     // Ask user for permission to show desktop notifications
     try { requestNotificationPermission(); } catch(e) { console.warn('Notification permission helper missing'); }
 
-    const token = localStorage.getItem('authToken');
+    const token = localStorage.getItem('token');
     
     if (!token || socket) return;
     
@@ -201,49 +269,106 @@ function initSocket() {
 // ============== MESSAGING FUNCTIONS ==============
 
 // Load conversations list
-async function loadConversations() {
-    try {
-        const conversations = await fetchAPI('/api/messages/conversations');
-        
-        const container = document.getElementById('conversationsList');
-        
-        if (!conversations || conversations.length === 0) {
-            container.innerHTML = '<div style="padding:20px;text-align:center;color:#8b8d91;">No conversations yet</div>';
-            return;
-        }
-        
-        container.innerHTML = conversations.map(conv => {
-            const isOnline = onlineUsers.has(conv.otherUser.id);
-            const lastMessagePreview = conv.lastMessage.text.length > 50 
-                ? conv.lastMessage.text.substring(0, 50) + '...' 
-                : conv.lastMessage.text;
-            
-            return `
-                <div class="conversation-item" onclick="openConversation('${conv.otherUser.id}', '${conv.otherUser.username}', '${conv.otherUser.displayName}', '${conv.otherUser.avatarUrl || ''}', '${conv.conversationId}')" style="padding:15px;border-bottom:1px solid #2f3336;cursor:pointer;transition:0.2s;">
-                    <div style="display:flex;align-items:center;gap:12px;">
-                        <div style="position:relative;">
-                            <div style="width:50px;height:50px;border-radius:50%;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);display:flex;align-items:center;justify-content:center;font-size:24px;overflow:hidden;">
-                                ${conv.otherUser.avatarUrl ? `<img src="${conv.otherUser.avatarUrl}" style="width:100%;height:100%;object-fit:cover;">` : '👤'}
-                            </div>
-                            ${isOnline ? '<div style="position:absolute;bottom:0;right:0;width:14px;height:14px;background:#00d084;border:2px solid #242526;border-radius:50%;"></div>' : ''}
-                        </div>
-                        <div style="flex:1;">
-                            <div style="display:flex;justify-content:space-between;align-items:center;">
-                                <div style="font-weight:600;color:#e4e6eb;">${conv.otherUser.displayName}</div>
-                                <div style="font-size:12px;color:#8b8d91;">${formatMessageTime(conv.lastMessage.createdAt)}</div>
-                            </div>
-                            <div style="font-size:14px;color:${conv.unreadCount > 0 ? '#e4e6eb' : '#8b8d91'};${conv.unreadCount > 0 ? 'font-weight:600;' : ''}">${lastMessagePreview}</div>
-                        </div>
-                        ${conv.unreadCount > 0 ? `<div style="background:#667eea;color:white;padding:4px 8px;border-radius:12px;font-size:12px;font-weight:600;">${conv.unreadCount}</div>` : ''}
-                    </div>
-                </div>
-            `;
-        }).join('');
-        
-    } catch (error) {
-        console.error('Error loading conversations:', error);
-    }
+// fallback placeholder (uploaded file you used)
+const PLACEHOLDER_AVATAR = 'monkey.jpg';
+// Close chat (same behavior as back but clearer name)
+function closeChat() {
+   backToConversations();
+
 }
+
+
+// Robust, defensive loadConversations() to replace the broken one
+async function loadConversations() {
+  try {
+    console.log('[messages] loading conversations...');
+    const conversations = await fetchAPI('/api/messages/conversations');
+
+    const container = document.getElementById('conversationsList');
+    container.style.display = 'block';        // make sure it's visible
+    container.innerHTML = '';                 // clear old
+
+    // defensive: if not an array, show debug info
+    if (!Array.isArray(conversations)) {
+      console.warn('[messages] expected array but got:', conversations);
+      container.innerHTML = `<div style="padding:20px;text-align:center;color:#8b8d91;">
+        Debug: unexpected response (see console).</div>`;
+      return;
+    }
+
+    if (conversations.length === 0) {
+      container.innerHTML = '<div style="padding:20px;text-align:center;color:#8b8d91;">No conversations yet</div>';
+      return;
+    }
+
+    // map safely - tolerate different field names
+    container.innerHTML = conversations.map(conv => {
+      // normal shapes: conv.otherUser or conv.user
+      const other = conv.otherUser || conv.user || conv.participant || {};
+      const otherId = other.id || other._id || other.userId || '';
+      const displayName = other.displayName || other.name || other.fullName || other.username || 'Unknown';
+      const username = other.username || (other.email ? other.email.split('@')[0] : 'user');
+      const avatar = other.avatarUrl || other.avatar || other.profilePic || other.picture || '';
+      const unreadCount = conv.unreadCount ?? conv.unread ?? conv.unreads ?? 0;
+      const lastMessageText =
+        (conv.lastMessage && (conv.lastMessage.text || conv.lastMessage.body)) ||
+        conv.snippet || conv.preview || '';
+      const lastCreated =
+        (conv.lastMessage && (conv.lastMessage.createdAt || conv.lastMessage.ts)) ||
+        conv.updatedAt || conv.modifiedAt || '';
+
+      // preview safely
+      const lastMessagePreview = lastMessageText.length > 60 ? lastMessageText.substring(0, 60) + '...' : lastMessageText;
+
+      // online indicator check (if your onlineUsers is a Set or Map)
+      const isOnline = typeof onlineUsers !== 'undefined' && onlineUsers && (onlineUsers.has ? onlineUsers.has(otherId) : false);
+
+      // safe click params (escape single quotes)
+      const safeOtherId = (''+otherId).replace(/'/g, "\\'");
+      const safeUsername = (''+username).replace(/'/g, "\\'");
+      const safeDisplayName = (''+displayName).replace(/'/g, "\\'");
+      const safeAvatar = (''+avatar).replace(/'/g, "\\''");
+
+      return `
+        <div class="conversation-item" onclick="openConversation('${safeOtherId}', '${safeUsername}', '${safeDisplayName}', '${safeAvatar}', '${conv.conversationId || otherId || ''}')" style="padding:12px;border-bottom:1px solid #2f3336;cursor:pointer;">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div style="position:relative;flex-shrink:0;">
+              <div style="width:50px;height:50px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);">
+                ${avatar ? `<img src="${avatar}" style="width:100%;height:100%;object-fit:cover;" onerror="this.onerror=null;this.src='${PLACEHOLDER_AVATAR}'">` : `<img src="${PLACEHOLDER_AVATAR}" style="width:100%;height:100%;object-fit:cover;">`}
+              </div>
+              ${isOnline ? '<div style="position:absolute;bottom:0;right:0;width:12px;height:12px;background:#00d084;border:2px solid #242526;border-radius:50%;"></div>' : ''}
+            </div>
+
+            <div style="flex:1;min-width:0;">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="font-weight:600;color:#e4e6eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(displayName)}</div>
+                <div style="font-size:12px;color:#8b8d91;">${lastCreated ? formatMessageTime(lastCreated) : ''}</div>
+              </div>
+              <div style="font-size:14px;color:${unreadCount>0 ? '#e4e6eb' : '#8b8d91'};${unreadCount>0? 'font-weight:600;' : ''};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                ${escapeHtml(lastMessagePreview)}
+              </div>
+            </div>
+
+            ${unreadCount > 0 ? `<div style="background:#667eea;color:white;padding:6px;border-radius:12px;font-size:12px;font-weight:600;margin-left:8px">${unreadCount}</div>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    console.log('[messages] rendered', conversations.length, 'conversations');
+
+  } catch (error) {
+    console.error('Error loading conversations (safe renderer):', error);
+    const container = document.getElementById('conversationsList');
+    container.innerHTML = '<div style="padding:20px;text-align:center;color:#ff7979;">Failed to load conversations</div>';
+  }
+}
+
+// minimal html-escape helper (used above)
+function escapeHtml(str = '') {
+  return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
+}
+
 
 // Search users to message
 let messageSearchTimeout;
@@ -615,6 +740,52 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ============== UPDATE INIT FUNCTION ==============
 // Add this to your existing init() function:
+// ----------------- Sidebar messages badge helper -----------------
+async function updateSidebarMessagesBadge() {
+    try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            // no token - hide badge
+            const b = document.getElementById('sidebarMessagesBadge');
+            if (b) b.style.display = 'none';
+            return;
+        }
+
+        // Use your notifications unread count endpoint (adjust path if your backend differs)
+        const res = await fetch(`${API_URL}/api/notifications/unread/count`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            credentials: 'include'
+        });
+
+        if (!res.ok) {
+            // handle 401/404 gracefully
+            console.warn('updateSidebarMessagesBadge: non-ok status', res.status);
+            const b = document.getElementById('sidebarMessagesBadge');
+            if (b) b.style.display = 'none';
+            return;
+        }
+
+        const data = await res.json();
+        const badge = document.getElementById('sidebarMessagesBadge');
+        if (!badge) return;
+
+        if (data.count && data.count > 0) {
+            badge.textContent = data.count;
+            badge.style.display = 'inline-block';
+        } else {
+            badge.style.display = 'none';
+        }
+    } catch (err) {
+        console.warn('updateSidebarMessagesBadge error (ignored):', err);
+        const b = document.getElementById('sidebarMessagesBadge');
+        if (b) b.style.display = 'none';
+    }
+}
+
 async function init() {
     try {
         await loadUserData();
@@ -783,26 +954,29 @@ async function markNotificationRead(notificationId) {
 }
 
 // ============== VIEW SWITCHING ==============
-function switchToHome() {
+function switchToHome(event) {
     document.querySelectorAll('.content').forEach(el => el.classList.remove('active'));
     document.getElementById('feed-view').classList.add('active');
     
     document.querySelectorAll('.menu-link').forEach(el => el.classList.remove('active'));
-    event.target.classList.add('active');
-    
+    if (event && event.target) event.target.classList.add('active');
+
     document.querySelectorAll('.toggle-btn').forEach(el => el.classList.remove('active'));
-    document.querySelector('.toggle-btn:first-child').classList.add('active');
+    const firstToggle = document.querySelector('.toggle-btn:first-child');
+    if (firstToggle) firstToggle.classList.add('active');
 }
 
-function switchToNotifications() {
+
+function switchToNotifications(event) {
     document.querySelectorAll('.content').forEach(el => el.classList.remove('active'));
     document.getElementById('notifications-view').classList.add('active');
-    
+
     document.querySelectorAll('.menu-link').forEach(el => el.classList.remove('active'));
-    event.target.classList.add('active');
-    
+    if (event && event.target) event.target.classList.add('active');
+
     loadNotifications();
 }
+
 
 function showFeed(event) {
     document.querySelectorAll('.content').forEach(el => el.classList.remove('active'));
@@ -976,6 +1150,7 @@ async function toggleFollow(userId) {
     }
 }
 // ============== FOLLOWERS/FOLLOWING DISPLAY ==============
+//are they needed here 
 async function showFollowersList(userId) {
     try {
         console.log('Loading followers for user:', userId);
@@ -1060,11 +1235,11 @@ function closePostModal() {
     document.getElementById('fileCaptionInput').value = '';
 }
 
-function selectPostType(type) {
+function selectPostType(type, event) {
     selectedPostType = type;
     
     document.querySelectorAll('.type-btn').forEach(btn => btn.classList.remove('active'));
-    event.target.classList.add('active');
+    if (event && event.target) event.target.classList.add('active');
     
     document.querySelectorAll('.post-form').forEach(form => form.classList.remove('active'));
     
@@ -1074,6 +1249,7 @@ function selectPostType(type) {
         document.getElementById('fileForm').classList.add('active');
     }
 }
+
 
 async function submitPost() {
     try {
@@ -1227,7 +1403,7 @@ function showInAppToast(title, body, icon, onClick, actionText = 'Reply') {
 
 
 function logout() {
-    localStorage.removeItem('authToken');
+    localStorage.removeItem('token');
     window.location.href = '/login.html';
 }
 
@@ -1285,3 +1461,143 @@ async function loadUserData() {
         console.error('Error loading user:', error);
     }
 }
+
+//check notification 
+async function checkNotifications() {
+    try {
+        const result = await fetchAPI('/api/notifications/unread/count');
+        const badge = document.getElementById('notificationBadge');
+        if (result.count > 0) {
+            badge.textContent = result.count;
+            badge.style.display = 'inline-block';
+        } else {
+            badge.style.display = 'none';
+        }
+
+        // keep sidebar badge synced too
+        updateSidebarMessagesBadge();
+    } catch (error) {
+        console.error('Error checking notifications:', error);
+    }
+}
+
+
+//for side bar 
+document.addEventListener('DOMContentLoaded', () => {
+    init(); // (your existing init call)
+    // Add:
+    updateSidebarMessagesBadge();
+});
+
+
+
+
+
+
+
+/* ---------- resilient sidebar badge + auth-aware fetch ---------- */
+
+const SIDEBAR_BADGE_ID = 'sidebarMessagesBadge';
+const NOTIF_COUNT_PATH = '/api/notifications/unread/count'; // adjust if your server uses a different path
+
+// Helper: fetch with Authorization header
+async function fetchWithToken(path, opts = {}) {
+  const token = localStorage.getItem('token');
+  const headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  return fetch(path, {
+    credentials: 'include',
+    ...opts,
+    headers
+  });
+}
+
+// Update the badge element safely
+function showSidebarBadge(count) {
+  const badge = document.getElementById(SIDEBAR_BADGE_ID);
+  if (!badge) return;
+  if (Number(count) > 0) {
+    badge.textContent = String(count);
+    badge.style.display = 'inline-block';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// Resilient polling with backoff (prevents floods)
+let _notifPoll = { timer: null, interval: 30000, attempts: 0 };
+
+async function pollNotificationCountOnce() {
+  try {
+    // If no token, hide badge and stop polling
+    const token = localStorage.getItem('token');
+    if (!token) {
+      showSidebarBadge(0);
+      // don't poll until user logs in
+      return;
+    }
+
+    const res = await fetchWithToken(NOTIF_COUNT_PATH, { method: 'GET' });
+
+    if (!res.ok) {
+      // handle common non-ok responses gracefully
+      if (res.status === 401) {
+        console.warn('Unread-count: unauthorized (401). Stopping polling until re-auth.');
+        showSidebarBadge(0);
+        stopNotificationsPolling();
+        return;
+      }
+      if (res.status === 404) {
+        console.warn('Unread-count: endpoint not found (404). Stopping polling.');
+        showSidebarBadge(0);
+        stopNotificationsPolling();
+        return;
+      }
+      // Other statuses: back off and retry later
+      console.warn('Unread-count: non-ok status', res.status);
+      throw new Error('Non-ok status ' + res.status);
+    }
+
+    // success -> parse JSON and update
+    const data = await res.json();
+    showSidebarBadge(data.count || 0);
+
+    // reset backoff on success
+    _notifPoll.attempts = 0;
+    _notifPoll.interval = 30000;
+
+  } catch (err) {
+    // On network/parse error, back off exponentially
+    _notifPoll.attempts = (_notifPoll.attempts || 0) + 1;
+    _notifPoll.interval = Math.min(300000, 30000 * Math.pow(2, Math.min(_notifPoll.attempts - 1, 5)));
+    console.warn('pollNotificationCountOnce error (backing off):', err, 'next interval:', _notifPoll.interval);
+  }
+}
+
+function startNotificationsPolling() {
+  if (_notifPoll.timer) return; // already running
+  async function loop() {
+    await pollNotificationCountOnce();
+    _notifPoll.timer = setTimeout(loop, _notifPoll.interval);
+  }
+  loop();
+}
+
+function stopNotificationsPolling() {
+  if (_notifPoll.timer) {
+    clearTimeout(_notifPoll.timer);
+    _notifPoll.timer = null;
+  }
+}
+
+// init on DOM ready
+document.addEventListener('DOMContentLoaded', () => {
+  // single immediate check
+  pollNotificationCountOnce().catch(()=>{});
+  // start polling (resilient)
+  startNotificationsPolling();
+  
+  // If you have a global function that refreshes notifications (checkNotifications),
+  // call startNotificationsPolling() after that succeeds to keep things in sync.
+});
