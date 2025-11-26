@@ -1,4 +1,5 @@
-// routes/messages.js - FIXED AUTH
+
+// routes/messages.js - FIXED: Sorting, Duplicates, and Notifications
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
@@ -6,6 +7,7 @@ const mongoose = require('mongoose');
 // adjust paths if your models live elsewhere
 const User = require('../models/User');
 const Message = require('../models/Message');
+const Notification = require('../models/Notification');
 
 // helper auth middleware (minimal) - FIXED
 const jwt = require('jsonwebtoken');
@@ -20,11 +22,11 @@ async function auth(req, res, next) {
     
     const token = ah.slice(7);
     
-    console.log('🔍 Messages route - Token received:', token.substring(0, 30) + '...');
+    console.log('🔐 Messages route - Token received:', token.substring(0, 30) + '...');
     
     const payload = jwt.verify(token, JWT_SECRET);
     
-    console.log('🔍 Messages route - Decoded payload:', payload);
+    console.log('🔐 Messages route - Decoded payload:', payload);
     
     // ✅ FIXED: Accept all common JWT claim names including 'sub'
     req.userId = payload.userId || payload.id || payload._id || payload.sub;
@@ -77,49 +79,66 @@ router.get('/search-users', auth, async (req, res) => {
 /**
  * GET /api/conversations
  * List conversations for current user (aggregated from messages)
+ * ✅ FIXED: Proper sorting by time + no duplicates
  */
 router.get('/conversations', auth, async (req, res) => {
   try {
-    // ✅ FIXED: Use 'new' keyword for ObjectId constructor
     const myId = new mongoose.Types.ObjectId(req.userId);
 
     console.log('📨 Loading conversations for user:', req.userId);
 
-    // find messages where user is sender or in recipients
+    // ✅ FIXED: Group by conversationId and get the LATEST message for each
     const agg = await Message.aggregate([
       { $match: { $or: [{ sender: myId }, { recipients: myId }] } },
-      { $sort: { createdAt: -1 } },
+      { $sort: { createdAt: -1 } }, // Sort by newest first
       {
         $group: {
           _id: '$conversationId',
           lastMessageId: { $first: '$_id' },
           lastText: { $first: '$text' },
           lastTime: { $first: '$createdAt' },
-          participants: { $first: { $concatArrays: [['$sender'], '$recipients'] } }
+          senderId: { $first: '$sender' },
+          recipients: { $first: '$recipients' }
         }
       },
+      { $sort: { lastTime: -1 } }, // ✅ Sort conversations by most recent message
       { $limit: 200 }
     ]);
 
-    console.log('📨 Found', agg.length, 'conversations');
+    console.log('📨 Found', agg.length, 'unique conversations');
 
     // Replace participant ObjectIds with user info
     const convs = await Promise.all(agg.map(async (c) => {
-      const pids = Array.from(new Set((c.participants || []).map(x => String(x))));
-      const otherIds = pids.filter(id => id !== String(myId));
-      const others = await User.find({ _id: { $in: otherIds } }).select('username displayName avatarUrl');
+      // Get all participant IDs from this conversation
+      const allParticipantIds = [c.senderId, ...c.recipients].map(id => String(id));
+      const uniqueIds = Array.from(new Set(allParticipantIds));
       
-      // For 1:1 conversations, return the other user as "with"
-      const otherUser = others[0] || null;
+      // Find the other user (not me)
+      const otherIds = uniqueIds.filter(id => id !== String(myId));
+      
+      if (otherIds.length === 0) {
+        console.warn('⚠️ No other user found in conversation:', c._id);
+        return null;
+      }
+      
+      const others = await User.find({ _id: { $in: otherIds } })
+        .select('username displayName avatarUrl');
+      
+      const otherUser = others[0];
+      
+      if (!otherUser) {
+        console.warn('⚠️ Other user not found in DB for conversation:', c._id);
+        return null;
+      }
       
       return {
         conversationId: c._id,
-        with: otherUser ? {
+        with: {
           _id: otherUser._id,
           username: otherUser.username,
           displayName: otherUser.displayName || otherUser.username,
           avatarUrl: otherUser.avatarUrl
-        } : null,
+        },
         lastMessage: {
           text: c.lastText,
           createdAt: c.lastTime
@@ -128,8 +147,16 @@ router.get('/conversations', auth, async (req, res) => {
       };
     }));
 
-    const filteredConvs = convs.filter(c => c.with);
-    console.log('✅ Returning', filteredConvs.length, 'valid conversations');
+    // ✅ Remove null entries and ensure sorted by time
+    const filteredConvs = convs
+      .filter(c => c && c.with)
+      .sort((a, b) => {
+        const timeA = new Date(a.lastMessage.createdAt).getTime();
+        const timeB = new Date(b.lastMessage.createdAt).getTime();
+        return timeB - timeA; // Most recent first
+      });
+
+    console.log('✅ Returning', filteredConvs.length, 'valid conversations (sorted by time)');
 
     res.json({ conversations: filteredConvs });
   } catch (err) {
@@ -145,7 +172,6 @@ router.get('/conversations', auth, async (req, res) => {
  */
 router.get('/conversations/user/:username', auth, async (req, res) => {
   try {
-    // ✅ FIXED: Use 'new' keyword for ObjectId constructor
     const myId = new mongoose.Types.ObjectId(req.userId);
     const { username } = req.params;
 
@@ -181,18 +207,10 @@ router.get('/conversations/user/:username', auth, async (req, res) => {
 });
 
 /**
- * POST /api/conversations/user/:username/messages
- * Send message to username. Body: { text, attachments? }
- */
-/**
- * POST /api/conversations/user/:username/messages
- * Send message to username. Body: { text, attachments? }
- */
-/**
  * GET /api/messages/unread/count
  * Get count of unread messages for current user
  */
-router.get('/unread/count', auth, async (req, res) => {
+router.get('/messages/unread/count', auth, async (req, res) => {
   try {
     const myId = new mongoose.Types.ObjectId(req.userId);
     
@@ -214,9 +232,14 @@ router.get('/unread/count', auth, async (req, res) => {
     res.status(500).json({ error: 'Failed to get count', details: err.message });
   }
 });
+
+/**
+ * POST /api/conversations/user/:username/messages
+ * Send message to username. Body: { text, attachments? }
+ * ✅ FIXED: Create notification for recipient
+ */
 router.post('/conversations/user/:username/messages', auth, async (req, res) => {
   try {
-    // ✅ FIXED: Use 'new' keyword for ObjectId constructor
     const myId = new mongoose.Types.ObjectId(req.userId);
     const { username } = req.params;
     const { text = '', attachments = [] } = req.body;
@@ -248,7 +271,6 @@ router.post('/conversations/user/:username/messages', auth, async (req, res) => 
     console.log('✅ Message saved:', msg._id);
 
     // ✅ CREATE NOTIFICATION FOR RECIPIENT
-    const Notification = require('../models/Notification');
     try {
       await Notification.create({
         user: target._id,
@@ -258,21 +280,24 @@ router.post('/conversations/user/:username/messages', auth, async (req, res) => 
         targetId: msg._id,
         read: false
       });
-      console.log('✅ Notification created for message via API');
+      console.log('✅ Notification created for message recipient');
     } catch (notifErr) {
       console.error('❌ Failed to create notification:', notifErr);
       // Don't fail the whole request if notification fails
     }
 
-    // Optionally: emit socket event here if you use socket.io
+    // ✅ Emit socket event if socket.io is available
     const io = req.app.get('io');
     if (io) {
-      // Emit to recipient if they're online
-      const recipientSocketId = Array.from(io.sockets.sockets.values())
-        .find(s => s.userId === String(target._id))?.id;
+      // Find recipient's socket
+      const recipientSocket = Array.from(io.sockets.sockets.values())
+        .find(s => String(s.userId) === String(target._id));
       
-      if (recipientSocketId) {
-        io.to(recipientSocketId).emit('new_message', {
+      if (recipientSocket) {
+        console.log('✅ Sending real-time notification to recipient socket');
+        
+        // Emit new message event
+        recipientSocket.emit('new_message', {
           id: msg._id,
           conversationId: conversationId,
           sender: {
@@ -285,10 +310,15 @@ router.post('/conversations/user/:username/messages', auth, async (req, res) => 
           createdAt: msg.createdAt
         });
         
-        io.to(recipientSocketId).emit('new_notification', {
+        // Emit notification badge update
+        recipientSocket.emit('new_notification', {
           type: 'message',
-          from: req.user.username
+          from: req.user.username,
+          fromDisplayName: req.user.displayName || req.user.username,
+          message: text.substring(0, 100)
         });
+      } else {
+        console.log('📪 Recipient offline - notification will wait');
       }
     }
 
@@ -299,4 +329,5 @@ router.post('/conversations/user/:username/messages', auth, async (req, res) => 
     res.status(500).json({ error: 'Failed to send message', details: err.message });
   }
 });
+
 module.exports = router;

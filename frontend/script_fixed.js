@@ -973,40 +973,248 @@ function createPostHTML(post) {
       : "👤";
 
   return `
-        <div class="post-card">
-            <div class="post-header">
-                <div class="post-avatar">${avatar}</div>
-                <div>
-                    <div class="post-name">${
-                      post.displayName || post.username
-                    }</div>
-                    <div class="post-username">@${post.username} · ${
-    post.timestamp
-  }</div>
-                </div>
-            </div>
-            <div class="post-content">${post.content}</div>
-            ${
-              post.mediaUrl
-                ? `<img src="${post.mediaUrl}" class="post-media" alt="Post media">`
-                : ""
-            }
-            <div class="post-actions">
-                <button class="action-btn ${
-                  post.liked ? "liked" : ""
-                }" onclick="toggleLike('${post.id}')">
-                    ${post.liked ? "❤️" : "🤍"} <span id="likes-${post.id}">${
-    post.likes
-  }</span>
-                </button>
-                <button class="action-btn">💬 ${post.comments}</button>
-                <button class="action-btn">🔄</button>
-                <button class="action-btn">📤</button>
-            </div>
+    <div class="post-card" id="post-${post.id}">
+      <div class="post-header">
+        <div class="post-avatar">${avatar}</div>
+        <div>
+          <div class="post-name">${post.displayName || post.username}</div>
+          <div class="post-username">@${post.username} · ${post.timestamp}</div>
         </div>
-    `;
+      </div>
+      <div class="post-content">${post.content}</div>
+      ${
+        post.mediaUrl
+          ? `<img src="${post.mediaUrl}" class="post-media" alt="Post media">`
+          : ""
+      }
+      <div class="post-actions">
+        <button class="action-btn ${post.liked ? "liked" : ""}" onclick="toggleLike('${post.id}')">
+          ${post.liked ? "❤️" : "🤍"} <span id="likes-${post.id}">${post.likes}</span>
+        </button>
+        <button class="action-btn" onclick="toggleComments('${post.id}')">
+          💬 <span id="comments-count-${post.id}">${post.comments || 0}</span>
+        </button>
+        <button class="action-btn">🔄</button>
+        <button class="action-btn">📤</button>
+      </div>
+
+      <!-- COMMENTS SECTION (Hidden by default) -->
+      <div class="comments-section" id="comments-${post.id}" style="display:none;margin-top:15px;border-top:1px solid #2f3336;padding-top:15px;">
+        
+        <!-- Add Comment Form -->
+        <div style="display:flex;gap:10px;margin-bottom:15px;align-items:center;">
+          <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);display:flex;align-items:center;justify-content:center;font-size:16px;overflow:hidden;flex-shrink:0;">
+            ${currentUser && currentUser.avatarUrl ? `<img src="${currentUser.avatarUrl}" style="width:100%;height:100%;object-fit:cover;">` : "👤"}
+          </div>
+          <input 
+            type="text" 
+            id="comment-input-${post.id}" 
+            placeholder="Write a comment..." 
+            style="flex:1;padding:10px 15px;border-radius:20px;border:1px solid #3a3b3c;background:#18191a;color:#e4e6eb;font-size:14px;"
+            onkeypress="handleCommentKeyPress(event, '${post.id}')"
+          >
+          <button 
+            onclick="addComment('${post.id}')" 
+            style="padding:8px 16px;background:#667eea;color:white;border:none;border-radius:20px;cursor:pointer;font-weight:600;font-size:14px;">
+            ➕ Add
+          </button>
+        </div>
+
+        <!-- Comments List -->
+        <div id="comments-list-${post.id}" style="display:flex;flex-direction:column;gap:12px;">
+          <!-- Comments will be loaded here -->
+        </div>
+      </div>
+    </div>
+  `;
+}
+async function toggleComments(postId) {
+  const commentsSection = document.getElementById(`comments-${postId}`);
+  
+  if (!commentsSection) {
+    console.error('Comments section not found for post:', postId);
+    return;
+  }
+
+  if (commentsSection.style.display === 'none') {
+    // Show comments and load them
+    commentsSection.style.display = 'block';
+    await loadComments(postId);
+  } else {
+    // Hide comments
+    commentsSection.style.display = 'none';
+  }
 }
 
+// Load comments for a post
+async function loadComments(postId) {
+  try {
+    const commentsList = document.getElementById(`comments-list-${postId}`);
+    
+    if (!commentsList) {
+      console.error('Comments list element not found');
+      return;
+    }
+
+    commentsList.innerHTML = '<div style="text-align:center;color:#8b8d91;padding:10px;">Loading comments...</div>';
+
+    const comments = await fetchAPI(`/api/posts/${postId}/comments`);
+
+    if (!comments || comments.length === 0) {
+      commentsList.innerHTML = '<div style="text-align:center;color:#8b8d91;padding:10px;">No comments yet. Be the first to comment!</div>';
+      return;
+    }
+
+    commentsList.innerHTML = comments.map(comment => createCommentHTML(comment, postId)).join('');
+
+  } catch (error) {
+    console.error('Error loading comments:', error);
+    const commentsList = document.getElementById(`comments-list-${postId}`);
+    if (commentsList) {
+      commentsList.innerHTML = '<div style="text-align:center;color:#ff7979;padding:10px;">Failed to load comments</div>';
+    }
+  }
+}
+
+// Create comment HTML
+function createCommentHTML(comment, postId) {
+  const author = comment.author || {};
+  const avatar = author.avatarUrl 
+    ? `<img src="${author.avatarUrl}" style="width:100%;height:100%;object-fit:cover;">`
+    : "👤";
+
+  const isMyComment = currentUser && currentUser.id === author.id;
+  const createdAt = new Date(comment.createdAt).toLocaleString();
+
+  return `
+    <div class="comment-item" style="display:flex;gap:10px;padding:12px;background:#18191a;border-radius:8px;">
+      <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);display:flex;align-items:center;justify-content:center;font-size:16px;overflow:hidden;flex-shrink:0;">
+        ${avatar}
+      </div>
+      <div style="flex:1;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+          <div>
+            <span style="font-weight:600;color:#e4e6eb;font-size:14px;">${author.displayName || author.username}</span>
+            <span style="color:#8b8d91;font-size:12px;margin-left:8px;">@${author.username}</span>
+          </div>
+          ${isMyComment ? `
+            <button 
+              onclick="deleteComment('${comment.id}', '${postId}')" 
+              style="background:none;border:none;color:#ff7979;cursor:pointer;font-size:18px;padding:4px 8px;"
+              title="Delete comment">
+              🗑️
+            </button>
+          ` : ''}
+        </div>
+        <div style="color:#e4e6eb;font-size:14px;margin-bottom:5px;">${comment.text}</div>
+        <div style="color:#8b8d91;font-size:12px;">${formatTimestamp(comment.createdAt)}</div>
+      </div>
+    </div>
+  `;
+}
+
+// Add a comment
+async function addComment(postId) {
+  try {
+    const input = document.getElementById(`comment-input-${postId}`);
+    const text = input.value.trim();
+
+    if (!text) {
+      alert('Please write a comment');
+      return;
+    }
+
+    // Disable input while submitting
+    input.disabled = true;
+
+    const result = await fetchAPI(`/api/posts/${postId}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({ text })
+    });
+
+    console.log('Comment added:', result);
+
+    // Clear input
+    input.value = '';
+    input.disabled = false;
+
+    // Reload comments
+    await loadComments(postId);
+
+    // Update comment count
+    const countElement = document.getElementById(`comments-count-${postId}`);
+    if (countElement) {
+      const currentCount = parseInt(countElement.textContent) || 0;
+      countElement.textContent = currentCount + 1;
+    }
+
+  } catch (error) {
+    console.error('Error adding comment:', error);
+    alert('Failed to add comment: ' + (error.message || 'Unknown error'));
+    
+    // Re-enable input
+    const input = document.getElementById(`comment-input-${postId}`);
+    if (input) input.disabled = false;
+  }
+}
+
+// Delete a comment
+async function deleteComment(commentId, postId) {
+  if (!confirm('Are you sure you want to delete this comment?')) {
+    return;
+  }
+
+  try {
+    await fetchAPI(`/api/comments/${commentId}`, {
+      method: 'DELETE'
+    });
+
+    console.log('Comment deleted');
+
+    // Reload comments
+    await loadComments(postId);
+
+    // Update comment count
+    const countElement = document.getElementById(`comments-count-${postId}`);
+    if (countElement) {
+      const currentCount = parseInt(countElement.textContent) || 0;
+      countElement.textContent = Math.max(0, currentCount - 1);
+    }
+
+  } catch (error) {
+    console.error('Error deleting comment:', error);
+    alert('Failed to delete comment: ' + (error.message || 'Unknown error'));
+  }
+}
+
+// Handle Enter key press in comment input
+function handleCommentKeyPress(event, postId) {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    addComment(postId);
+  }
+}
+
+// ============== HELPER FUNCTION ==============
+function formatTimestamp(date) {
+  const now = new Date();
+  const diff = Math.floor((now - new Date(date)) / 1000);
+
+  if (diff < 60) return "Just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
+  return new Date(date).toLocaleDateString();
+}
+
+// Make functions globally available
+window.toggleComments = toggleComments;
+window.loadComments = loadComments;
+window.addComment = addComment;
+window.deleteComment = deleteComment;
+window.handleCommentKeyPress = handleCommentKeyPress;
+
+console.log('✅ Comment functionality loaded');
 async function toggleLike(postId) {
   try {
     const result = await fetchAPI(`/api/posts/${postId}/like`, {

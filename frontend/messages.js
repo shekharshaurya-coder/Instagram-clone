@@ -1,4 +1,3 @@
-// message.js - API-backed client (fixed: buttons + token handling + redirects)
 document.addEventListener('DOMContentLoaded', () => {
   const API_BASE = '/api';
   const convListContainer = document.querySelector('.conversations-list');
@@ -9,17 +8,20 @@ document.addEventListener('DOMContentLoaded', () => {
   const newMsgBtn = document.querySelector('.new-message-btn');
   const logoutBtn = document.querySelector('.logout-btn');
   const searchBtn = document.querySelector('.search-btn');
-if (searchBtn) {
-    searchBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        openSearchOverlay();
-    });
-}
 
+  if (searchBtn) {
+    searchBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      openSearchOverlay();
+    });
+  }
+
+  // ✅ Initialize Socket.IO for real-time updates
+  let socket = null;
+  initSocket();
 
   // If no token -> send user to login immediately (prevent 401s)
   if (!localStorage.getItem('token')) {
-    // If you want a different path, change 'login.html'
     window.location.href = 'login.html';
     return;
   }
@@ -27,25 +29,149 @@ if (searchBtn) {
   // load conversations
   loadConversations();
 
-  // -------------------------
+  // ✅ Initialize Socket.IO connection
+  function initSocket() {
+    const token = localStorage.getItem('token');
+    if (!token || socket) return;
+
+    // Connect to Socket.IO server
+    socket = io(`http://${window.location.hostname}:3000`, {
+      auth: { token: token }
+    });
+
+    socket.on('connect', () => {
+      console.log('✅ Socket.IO connected to messages page');
+    });
+
+    socket.on('connect_error', (error) => {
+      console.error('❌ Socket.IO connection error:', error);
+    });
+
+    // ✅ Listen for new messages
+    socket.on('new_message', (message) => {
+      console.log('📩 New message received:', message);
+      
+      // Show desktop notification
+      showMessageNotification(message);
+      
+      // Reload conversations to update the list
+      loadConversations();
+    });
+
+    // ✅ Listen for new notification events
+    socket.on('new_notification', (data) => {
+      console.log('🔔 New notification:', data);
+      
+      // Show toast notification
+      showToastNotification(data);
+    });
+
+    socket.on('disconnect', () => {
+      console.log('❌ Socket.IO disconnected');
+    });
+  }
+
+  // ✅ Show desktop notification for new message
+  function showMessageNotification(message) {
+    // Request permission if not granted
+    if (Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+
+    // Show desktop notification
+    if (Notification.permission === 'granted') {
+      const notification = new Notification(`New message from ${message.sender.displayName}`, {
+        body: message.text.substring(0, 100),
+        icon: message.sender.avatarUrl || '/default-avatar.png',
+        badge: '/badge-icon.png'
+      });
+
+      notification.onclick = () => {
+        window.focus();
+        notification.close();
+      };
+    }
+  }
+
+  // ✅ Show in-app toast notification
+  function showToastNotification(data) {
+    const toast = document.createElement('div');
+    toast.style.cssText = `
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 16px 20px;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+      z-index: 10000;
+      max-width: 350px;
+      animation: slideIn 0.3s ease-out;
+    `;
+
+    toast.innerHTML = `
+      <div style="font-weight: 600; margin-bottom: 4px;">
+        ${data.type === 'message' ? '💬' : '🔔'} ${data.fromDisplayName || data.from}
+      </div>
+      <div style="font-size: 14px; opacity: 0.9;">
+        ${data.message || 'Sent you a message'}
+      </div>
+    `;
+
+    document.body.appendChild(toast);
+
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+      toast.style.animation = 'slideOut 0.3s ease-out';
+      setTimeout(() => toast.remove(), 300);
+    }, 5000);
+
+    // Click to dismiss
+    toast.addEventListener('click', () => {
+      toast.remove();
+    });
+  }
+
+  // Add animations
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes slideIn {
+      from {
+        transform: translateX(400px);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+    @keyframes slideOut {
+      from {
+        transform: translateX(0);
+        opacity: 1;
+      }
+      to {
+        transform: translateX(400px);
+        opacity: 0;
+      }
+    }
+  `;
+  document.head.appendChild(style);
+
   // Nav behavior (fixed)
-  // -------------------------
   if (navItems && navItems.length) {
     navItems.forEach(item => {
       item.addEventListener('click', (e) => {
-        // Don't handle clicks on the logout button
         if (e.target.closest('.logout-btn')) {
           return;
         }
 
-        // allow anchors that actually point to pages to navigate
         const href = item.getAttribute('href');
         if (href && href !== '#') {
-          // let the browser navigate naturally (no SPA interception)
           return;
         }
 
-        // If this is the search item (icon or label) -> open overlay
         const icon = item.querySelector('.nav-icon')?.textContent?.trim();
         const label = item.textContent.trim().toLowerCase();
         if (icon === '🔍' || label.includes('search')) {
@@ -55,17 +181,11 @@ if (searchBtn) {
           return;
         }
 
-        // For other href="#" items we want SPA behavior for UI only (no navigation)
         e.preventDefault();
         e.stopPropagation();
 
-        // Toggle active state visually
         navItems.forEach(i => i.classList.remove('active'));
         item.classList.add('active');
-
-        // (Optional) add custom behavior for other items here:
-        // if (label.includes('home')) { showHomeView(); }
-        // else if (label.includes('profile')) { showProfileView(); }
       });
     });
   }
@@ -88,10 +208,9 @@ if (searchBtn) {
   if (logoutBtn) {
     logoutBtn.addEventListener('click', (ev) => {
       ev.preventDefault();
-      ev.stopPropagation(); // prevent bubbling to any parent nav click handlers
+      ev.stopPropagation();
       if (confirm('Logout from SocialSync?')) {
         localStorage.removeItem('token');
-        // redirect to login or landing
         window.location.href = 'login.html';
       }
     });
@@ -108,12 +227,10 @@ if (searchBtn) {
     });
   }
 
-  /* ----- Robust API helper (reads token on each call, sanitizes it, checks expiry) ----- */
+  /* ----- Robust API helper ----- */
   async function apiFetch(path, opts = {}) {
-    // Normalise headers whether opts.headers is a Headers object or plain object
     const userHeaders = {};
     if (opts.headers instanceof Headers) {
-      // copy Headers into plain object
       for (const pair of opts.headers.entries()) userHeaders[pair[0]] = pair[1];
     } else {
       Object.assign(userHeaders, opts.headers || {});
@@ -121,18 +238,14 @@ if (searchBtn) {
 
     userHeaders['Content-Type'] = userHeaders['Content-Type'] || 'application/json';
 
-    // get token and sanitize (strip wrapping quotes if accidentally stored via JSON.stringify)
     let token = localStorage.getItem('token') || '';
     if (!token) {
-      // immediately redirect to login to avoid repeated 401s
       localStorage.removeItem('token');
       window.location.href = 'login.html';
       throw new Error('No token found – redirecting to login');
     }
-    // remove potential wrapping double-quotes: "ey..." => ey...
     token = token.replace(/^"(.*)"$/, '$1').trim();
 
-    // quick expiry check (if token is malformed this try/catch will continue so we still send it)
     try {
       const parts = token.split('.');
       if (parts.length >= 2) {
@@ -144,24 +257,19 @@ if (searchBtn) {
         }
       }
     } catch (e) {
-      // decoding failed -> still attempt to send token; server will reject but we don't break here
-      console.warn('Unable to decode token payload locally (may be malformed):', e);
+      console.warn('Unable to decode token payload locally:', e);
     }
 
-    // attach sanitized token
     userHeaders['Authorization'] = `Bearer ${token}`;
 
-    // build fetch options (ensure headers replaced by our plain object)
     const fetchOpts = { ...opts, headers: userHeaders };
 
-    // remove `body` for GET requests (some fetch impls throw if body on GET)
     const method = (fetchOpts.method || 'GET').toUpperCase();
     if (method === 'GET' && fetchOpts.body) delete fetchOpts.body;
 
     const res = await fetch(API_BASE + path, fetchOpts);
 
     if (res.status === 401) {
-      // help debugging: attempt to get body text, but don't crash
       const txt = await res.text().catch(()=>res.statusText);
       console.error('401 from API:', txt);
       localStorage.removeItem('token');
@@ -177,73 +285,109 @@ if (searchBtn) {
     return res.json();
   }
 
-  /* ----- Load conversations from backend ----- */
-  async function loadConversations(){
-    try {
-      const data = await apiFetch('/conversations');
-      if (!convListContainer) return;
-      convListContainer.innerHTML = '';
-      if (!data.conversations || !data.conversations.length) {
-        convListContainer.innerHTML = `<div style="color:var(--muted);padding:12px;border-radius:8px;background:var(--glass)">No conversations yet. Use search to find someone.</div>`;
-        return;
-      }
-      
-      data.conversations.forEach(conv => {
-        const item = document.createElement('div');
-        item.className = 'conversation-item';
-        item.dataset.username = conv.with.username;
-        
-        const displayName = conv.with.displayName || conv.with.username;
-        const lastMsg = conv.lastMessage?.text || 'No messages yet';
-        const timeStr = conv.lastMessage?.createdAt ? timeAgo(new Date(conv.lastMessage.createdAt).getTime()) : '';
-        
-        item.innerHTML = `
-          <div class="conversation-avatar">
-            <svg width="50" height="50" viewBox="0 0 50 50" fill="none">
-              <circle cx="25" cy="25" r="25" fill="#6B7FD7"/>
-              <path d="M25 25C28.866 25 32 21.866 32 18C32 14.134 28.866 11 25 11C21.134 11 18 14.134 18 18C18 21.866 21.134 25 25 25Z" fill="white"/>
-              <path d="M25 27.5C17.2156 27.5 11 33.7156 11 41.5V45H39V41.5C39 33.7156 32.7844 27.5 25 27.5Z" fill="white"/>
-            </svg>
-          </div>
-          <div class="conversation-info">
-            <h3>${escapeHtml(displayName)}</h3>
-            <p class="last-message">${escapeHtml(lastMsg)}</p>
-          </div>
-          <div class="conversation-meta">
-            <span class="time">${escapeHtml(timeStr)}</span>
-          </div>
-        `;
-        
-        convListContainer.appendChild(item);
-      });
-    } catch (err) {
-      console.error('loadConversations error:', err);
-      if (!convListContainer) return;
-      if (err.code === 401 || /token/i.test(err.message)) {
-        // show a non-invasive UI so user can re-login
-        convListContainer.innerHTML = `
-          <div style="color:var(--muted);padding:12px;border-radius:8px;background:var(--glass);display:flex;flex-direction:column;gap:8px">
-            <div>Session expired or unauthorized. Please <strong>log in</strong> to continue.</div>
-            <div style="display:flex;gap:8px">
-              <button id="loginAgainBtn" style="padding:8px 12px;border-radius:8px;border:none;background:var(--accent);color:white;cursor:pointer">Login</button>
-              <button id="retryConvoBtn" style="padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit;cursor:pointer">Retry</button>
-            </div>
-          </div>
-        `;
-        document.getElementById('loginAgainBtn').addEventListener('click', () => {
-          localStorage.removeItem('token');
-          window.location.href = 'login.html';
-        });
-        document.getElementById('retryConvoBtn').addEventListener('click', () => {
-          loadConversations();
-        });
+  /* ----- Load conversations from backend (SORTED) ----- */
+  /* ----- Load conversations from backend (SORTED + DEDUPED) ----- */
+async function loadConversations(){
+  try {
+    const data = await apiFetch('/conversations');
+    if (!convListContainer) return;
+    convListContainer.innerHTML = '';
+    if (!data.conversations || !data.conversations.length) {
+      convListContainer.innerHTML = `<div style="color:var(--muted);padding:12px;border-radius:8px;background:var(--glass)">No conversations yet. Use search to find someone.</div>`;
+      return;
+    }
+
+    // Defensive dedupe: keep the most recent conversation per username (case-insensitive).
+    // Use Map to preserve only one conv per username (keyed by username.toLowerCase()).
+    const dedupedByUsername = new Map();
+    // If backend provides an id for the other user prefer that; otherwise fallback to username.
+    data.conversations.forEach(conv => {
+      const key = String(conv.with?.username || conv.with?._id || '').toLowerCase();
+      if (!key) return; // skip malformed entries
+
+      // If no entry yet, set it. If exists, choose the one with later lastMessage.
+      if (!dedupedByUsername.has(key)) {
+        dedupedByUsername.set(key, conv);
       } else {
-        convListContainer.innerHTML = `<div style="color:#f66">Failed to load conversations: ${escapeHtml(err.message)}</div>`;
+        const existing = dedupedByUsername.get(key);
+        const existingTime = new Date(existing.lastMessage?.createdAt || 0).getTime();
+        const newTime = new Date(conv.lastMessage?.createdAt || 0).getTime();
+        if (newTime > existingTime) {
+          dedupedByUsername.set(key, conv);
+        }
       }
+    });
+
+    // Convert map values to array and sort by lastMessage time (most recent first)
+    const sortedConvs = Array.from(dedupedByUsername.values()).sort((a, b) => {
+      const timeA = new Date(a.lastMessage?.createdAt || 0).getTime();
+      const timeB = new Date(b.lastMessage?.createdAt || 0).getTime();
+      return timeB - timeA;
+    });
+
+    // Debug: warn if duplicates were removed
+    if (data.conversations.length !== sortedConvs.length) {
+      console.warn(`Removed ${data.conversations.length - sortedConvs.length} duplicate conversation(s) while rendering.`);
+    }
+
+    sortedConvs.forEach(conv => {
+      const item = document.createElement('div');
+      item.className = 'conversation-item';
+      item.dataset.username = conv.with.username;
+
+      const displayName = conv.with.displayName || conv.with.username;
+      const lastMsg = conv.lastMessage?.text || 'No messages yet';
+      const timeStr = conv.lastMessage?.createdAt ? timeAgo(new Date(conv.lastMessage.createdAt).getTime()) : '';
+
+      item.innerHTML = `
+        <div class="conversation-avatar">
+          <svg width="50" height="50" viewBox="0 0 50 50" fill="none">
+            <circle cx="25" cy="25" r="25" fill="#6B7FD7"/>
+            <path d="M25 25C28.866 25 32 21.866 32 18C32 14.134 28.866 11 25 11C21.134 11 18 14.134 18 18C18 21.866 21.134 25 25 25Z" fill="white"/>
+            <path d="M25 27.5C17.2156 27.5 11 33.7156 11 41.5V45H39V41.5C39 33.7156 32.7844 27.5 25 27.5Z" fill="white"/>
+          </svg>
+        </div>
+        <div class="conversation-info">
+          <h3>${escapeHtml(displayName)}</h3>
+          <p class="last-message">${escapeHtml(lastMsg)}</p>
+        </div>
+        <div class="conversation-meta">
+          <span class="time">${escapeHtml(timeStr)}</span>
+        </div>
+      `;
+
+      convListContainer.appendChild(item);
+    });
+
+    console.log('✅ Loaded', sortedConvs.length, 'conversations (sorted & deduped)');
+  } catch (err) {
+    console.error('loadConversations error:', err);
+    if (!convListContainer) return;
+    if (err.code === 401 || /token/i.test(err.message)) {
+      convListContainer.innerHTML = `
+        <div style="color:var(--muted);padding:12px;border-radius:8px;background:var(--glass);display:flex;flex-direction:column;gap:8px">
+          <div>Session expired. Please <strong>log in</strong> to continue.</div>
+          <div style="display:flex;gap:8px">
+            <button id="loginAgainBtn" style="padding:8px 12px;border-radius:8px;border:none;background:var(--accent);color:white;cursor:pointer">Login</button>
+            <button id="retryConvoBtn" style="padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit;cursor:pointer">Retry</button>
+          </div>
+        </div>
+      `;
+      document.getElementById('loginAgainBtn').addEventListener('click', () => {
+        localStorage.removeItem('token');
+        window.location.href = 'login.html';
+      });
+      document.getElementById('retryConvoBtn').addEventListener('click', () => {
+        loadConversations();
+      });
+    } else {
+      convListContainer.innerHTML = `<div style="color:#f66">Failed to load conversations: ${escapeHtml(err.message)}</div>`;
     }
   }
+}
 
-  /* ----- Search overlay (calls backend) ----- */
+
+  /* ----- Search overlay ----- */
   function openSearchOverlay() {
     const overlay = document.createElement('div');
     overlay.style.position = 'fixed';
@@ -259,7 +403,7 @@ if (searchBtn) {
           <strong style="color:#fff;font-size:16px">Search users</strong>
           <button id="closeSearch" style="background:transparent;border:none;color:#bdbdbd;font-weight:700;cursor:pointer">✕</button>
         </div>
-        <input id="searchInput" placeholder="Search by username or name (e.g. avani, admin, shekhar)" style="width:100%;padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit" />
+        <input id="searchInput" placeholder="Search by username or name" style="width:100%;padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit" />
         <div id="searchResults" style="margin-top:12px;display:flex;flex-direction:column;gap:8px;max-height:320px;overflow:auto"></div>
       </div>
     `;
@@ -310,7 +454,6 @@ if (searchBtn) {
           results.querySelectorAll('.msgBtn').forEach(btn => {
             btn.addEventListener('click', async (e) => {
               const to = btn.dataset.username;
-              // open server-backed thread for this user
               close();
               openChatThread(to);
             });
@@ -324,7 +467,7 @@ if (searchBtn) {
     input.focus();
   }
 
-  /* ----- Chat modal (API-backed) ----- */
+  /* ----- Chat modal ----- */
   async function openChatThread(username) {
     try {
       const data = await apiFetch(`/conversations/user/${encodeURIComponent(username)}`);
@@ -428,16 +571,15 @@ if (searchBtn) {
     }
   }
 
-  /* ----- Robust JWT decode used only locally to mark own messages ----- */
+  /* ----- Helper functions ----- */
   function getMyIdFromToken() {
     try {
       let tk = localStorage.getItem('token');
       if (!tk) return null;
-      tk = tk.replace(/^"(.*)"$/, '$1').trim();     // strip accidental quotes
+      tk = tk.replace(/^"(.*)"$/, '$1').trim();
       const parts = tk.split('.');
       if (parts.length < 2) return null;
       const payload = JSON.parse(atob(parts[1]));
-      // common token claim names
       return String(payload.userId || payload.id || payload._id || payload.sub || '');
     } catch (e) {
       console.warn('Failed to decode token locally:', e);
@@ -467,4 +609,7 @@ if (searchBtn) {
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
   }
+
+  // Make openSearchOverlay globally accessible
+  window.openSearchOverlay = openSearchOverlay;
 });
