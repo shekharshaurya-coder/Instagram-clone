@@ -467,7 +467,7 @@
 
     <script>
         const API_URL = 'http://localhost:3000';
-        const token = localStorage.getItem('authToken');
+        const token = localStorage.getItem('token');
 
         if (!token) {
             window.location.href = '/login.html';
@@ -494,7 +494,7 @@
                 });
 
                 if (response.status === 401) {
-                    localStorage.removeItem('authToken');
+                    localStorage.removeItem('token');
                     window.location.href = '/login.html';
                     return;
                 }
