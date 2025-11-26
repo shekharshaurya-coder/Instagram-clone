@@ -8,6 +8,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const auth = require("./middleware/auth");
 const connectDB = require("./db");
+const { redisHelpers } = require("./db");
 const Sentiment = require("sentiment");
 const sentimentAnalyzer = new Sentiment();
 const mongoose = require("mongoose");
@@ -685,6 +686,15 @@ app.get("/api/users/search", auth, async (req, res) => {
       return res.json([]);
     }
 
+    const cacheKey = cacheHelper.keys.search(q);
+
+    // Try to get from cache
+    const cached = await redisHelpers.getJSON(cacheKey);
+    if (cached) {
+      console.log("✅ Search cache hit for:", q);
+      return res.json(cached);
+    }
+
     const users = await User.find({
       username: { $regex: q, $options: "i" },
       _id: { $ne: req.user._id },
@@ -693,15 +703,18 @@ app.get("/api/users/search", auth, async (req, res) => {
       .limit(10)
       .lean();
 
-    res.json(
-      users.map((u) => ({
-        id: u._id,
-        username: u.username,
-        displayName: u.displayName || u.username,
-        avatarUrl: u.avatarUrl,
-        followersCount: u.followersCount || 0,
-      }))
-    );
+    const result = users.map((u) => ({
+      id: u._id,
+      username: u.username,
+      displayName: u.displayName || u.username,
+      avatarUrl: u.avatarUrl,
+      followersCount: u.followersCount || 0,
+    }));
+
+    // Cache for 10 minutes
+    await redisHelpers.setJSON(cacheKey, result, { ex: 600 });
+
+    res.json(result);
   } catch (err) {
     console.error("Search users error:", err);
     res.status(500).json({ message: "Server error" });
@@ -750,6 +763,9 @@ app.post("/api/users/:userId/follow", auth, async (req, res) => {
       await User.findByIdAndUpdate(req.user._id, {
         $inc: { followingCount: 1 },
       });
+
+      // Invalidate follow-related caches
+      await cacheHelper.invalidateFollowCaches(me, targetUserId);
 
       // best-effort notification
       try {
@@ -818,6 +834,9 @@ app.delete("/api/users/:userId/follow", auth, async (req, res) => {
     await User.findByIdAndUpdate(req.user._id, {
       $inc: { followingCount: -1 },
     });
+
+    // Invalidate follow-related caches
+    await cacheHelper.invalidateFollowCaches(me, targetUserId);
 
     return res.json({ message: "Unfollowed successfully", following: false });
   } catch (err) {
@@ -915,6 +934,9 @@ app.post("/api/posts", auth, async (req, res) => {
       comments: [],
     });
 
+    // Invalidate feed cache when new post is created
+    await cacheHelper.invalidateFeedCache();
+
     res.status(201).json({
       id: newPost._id,
       username: newPost.username,
@@ -935,6 +957,15 @@ app.post("/api/posts", auth, async (req, res) => {
 // GET FEED
 app.get("/api/posts/feed", auth, async (req, res) => {
   try {
+    const cacheKey = cacheHelper.keys.feed();
+
+    // Try to get from cache
+    const cached = await redisHelpers.getJSON(cacheKey);
+    if (cached) {
+      console.log("✅ Feed cache hit");
+      return res.json(cached);
+    }
+
     const posts = await Post.find().sort({ createdAt: -1 }).limit(50).lean();
 
     // Get user details for each post
@@ -965,6 +996,9 @@ app.get("/api/posts/feed", auth, async (req, res) => {
           post.likes.some((id) => id.toString() === req.user._id.toString()),
       };
     });
+
+    // Cache for 3 minutes
+    await redisHelpers.setJSON(cacheKey, formattedPosts, { ex: 180 });
 
     res.json(formattedPosts);
   } catch (err) {
@@ -1004,10 +1038,15 @@ app.post("/api/posts/:postId/like", auth, async (req, res) => {
           targetId: post._id,
           read: false,
         });
+        // Invalidate notification cache for post author
+        await cacheHelper.invalidateNotificationCache(post.userId);
       }
     }
 
     await post.save();
+
+    // Invalidate feed and comments cache
+    await cacheHelper.invalidateFeedCache();
 
     res.json({
       likes: post.likes.length,
@@ -1051,6 +1090,14 @@ app.post("/api/posts/:postId/comments", auth, async (req, res) => {
     post.comments.push(comment._id);
     await post.save();
 
+    // Invalidate feed and comments cache
+    await cacheHelper.invalidateFeedCache();
+    if (redisHelpers && redisHelpers.client()) {
+      await redisHelpers
+        .client()
+        .del(cacheHelper.keys.comments(req.params.postId));
+    }
+
     // Create notification for post author
     if (post.userId.toString() !== req.user._id.toString()) {
       await Notification.create({
@@ -1061,6 +1108,8 @@ app.post("/api/posts/:postId/comments", auth, async (req, res) => {
         targetId: post._id,
         read: false,
       });
+      // Invalidate notification cache for post author
+      await cacheHelper.invalidateNotificationCache(post.userId);
     }
 
     // Populate author info
@@ -1086,6 +1135,15 @@ app.post("/api/posts/:postId/comments", auth, async (req, res) => {
 // GET COMMENTS FOR A POST
 app.get("/api/posts/:postId/comments", async (req, res) => {
   try {
+    const cacheKey = cacheHelper.keys.comments(req.params.postId);
+
+    // Try to get from cache
+    const cached = await redisHelpers.getJSON(cacheKey);
+    if (cached) {
+      console.log("✅ Comments cache hit for post:", req.params.postId);
+      return res.json(cached);
+    }
+
     const Comment = require("./models/Comment");
 
     const comments = await Comment.find({ post: req.params.postId })
@@ -1105,6 +1163,9 @@ app.get("/api/posts/:postId/comments", async (req, res) => {
       createdAt: c.createdAt,
       likesCount: c.likesCount || 0,
     }));
+
+    // Cache for 5 minutes
+    await redisHelpers.setJSON(cacheKey, formattedComments, { ex: 300 });
 
     res.json(formattedComments);
   } catch (err) {
@@ -1207,12 +1268,24 @@ app.put("/api/notifications/:notificationId/read", auth, async (req, res) => {
 // GET UNREAD NOTIFICATION COUNT
 app.get("/api/notifications/unread/count", auth, async (req, res) => {
   try {
+    const cacheKey = cacheHelper.keys.unreadNotifications(req.user._id);
+
+    // Try to get from cache
+    const cached = await redisHelpers.getJSON(cacheKey);
+    if (cached !== null) {
+      console.log("✅ Unread count cache hit");
+      return res.json({ count: cached });
+    }
+
     const Notification = require("./models/Notification");
 
     const count = await Notification.countDocuments({
       user: req.user._id,
       read: false,
     });
+
+    // Cache for 1 minute
+    await redisHelpers.setJSON(cacheKey, count, { ex: 60 });
 
     res.json({ count });
   } catch (err) {
@@ -1374,8 +1447,77 @@ function formatTimestamp(date) {
 }
 
 // ============== START SERVER ==============
+
+// ============== REDIS CACHE HELPER ==============
+const cacheHelper = {
+  // Cache keys
+  keys: {
+    search: (q) => `search:users:${q.toLowerCase()}`,
+    userProfile: (id) => `user:profile:${id}`,
+    followers: (id) => `user:followers:${id}`,
+    following: (id) => `user:following:${id}`,
+    feed: () => `feed:posts:latest`,
+    comments: (postId) => `post:comments:${postId}`,
+    unreadNotifications: (userId) => `notif:unread:${userId}`,
+    followStatus: (followerId, followeeId) =>
+      `follow:${followerId}:${followeeId}`,
+  },
+
+  // Invalidate related caches
+  invalidateUserCaches: async (userId) => {
+    if (redisHelpers && redisHelpers.client()) {
+      const client = redisHelpers.client();
+      try {
+        const pattern = `*user:${userId}*`;
+        const keys = await client.keys(pattern);
+        if (keys.length > 0) await client.del(keys);
+      } catch (e) {
+        console.warn("Cache invalidation error:", e.message);
+      }
+    }
+  },
+
+  invalidateFeedCache: async () => {
+    if (redisHelpers && redisHelpers.client()) {
+      const client = redisHelpers.client();
+      try {
+        await client.del("feed:posts:latest");
+      } catch (e) {
+        console.warn("Feed cache invalidation error:", e.message);
+      }
+    }
+  },
+
+  invalidateFollowCaches: async (followerId, followeeId) => {
+    if (redisHelpers && redisHelpers.client()) {
+      const client = redisHelpers.client();
+      try {
+        await client.del(
+          `follow:${followerId}:${followeeId}`,
+          `user:followers:${followeeId}`,
+          `user:following:${followerId}`
+        );
+      } catch (e) {
+        console.warn("Follow cache invalidation error:", e.message);
+      }
+    }
+  },
+
+  invalidateNotificationCache: async (userId) => {
+    if (redisHelpers && redisHelpers.client()) {
+      const client = redisHelpers.client();
+      try {
+        await client.del(`notif:unread:${userId}`);
+      } catch (e) {
+        console.warn("Notification cache invalidation error:", e.message);
+      }
+    }
+  },
+};
+
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
+
 server.listen(PORT, HOST, () => {
   const ip = require("os").networkInterfaces();
   const addresses = [];
