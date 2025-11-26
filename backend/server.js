@@ -499,18 +499,17 @@ app.get('/api/messages/conversation/:userId', auth, async (req, res) => {
 });
 
 // SIGNUP
-app.post("/api/auth/signup", async (req, res) => {
+app.post('/api/auth/signup', async (req, res) => {
   try {
     const { email, username, password } = req.body;
-
     if (!email || !username || !password)
-      return res.status(400).json({ message: "Missing fields" });
+      return res.status(400).json({ message: 'Missing fields' });
 
     if (await User.findOne({ email }))
-      return res.status(400).json({ message: "Email already registered" });
+      return res.status(400).json({ message: 'Email already registered' });
 
     if (await User.findOne({ username }))
-      return res.status(400).json({ message: "Username taken" });
+      return res.status(400).json({ message: 'Username taken' });
 
     const hashed = await bcrypt.hash(password, 10);
 
@@ -519,30 +518,45 @@ app.post("/api/auth/signup", async (req, res) => {
       username,
       passwordHash: hashed,
       displayName: username,
-      bio: "",
-      avatarUrl: "",
+      bio: '',
+      avatarUrl: '',
       followersCount: 0,
       followingCount: 0
     });
 
+    // ensure JWT secret exists
+    if (!process.env.JWT_SECRET) {
+      console.error('JWT_SECRET not set');
+      return res.status(500).json({ message: 'Server configuration error' });
+    }
+
+    // sign token with multiple common id claims so middleware accepts it
+    const userIdStr = newUser._id.toString();
     const token = jwt.sign(
-      { sub: newUser._id.toString(), userId: newUser.userId, username: newUser.username },
+      {
+        userId: userIdStr,
+        id: userIdStr,
+        _id: userIdStr,
+        sub: userIdStr,
+        username: newUser.username
+      },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: '7d' }
     );
 
     return res.status(201).json({
       id: newUser._id,
-      userId: newUser.userId,
+      userId: userIdStr,
       email: newUser.email,
       username: newUser.username,
       token
     });
   } catch (err) {
     console.error('Signup error:', err);
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: 'Server error' });
   }
 });
+
 
 // LOGIN
 app.post("/api/auth/login", async (req, res) => {
