@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - SocialSync</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0e27;
+            color: #e4e6eb;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        .app {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* ==================== SIDEBAR ==================== */
+        .sidebar {
+            width: 250px;
+            background: #1a1f3a;
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .sidebar-logo {
+            font-size: 20px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 30px;
+        }
+
+        .sidebar-nav {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .nav-btn {
+            padding: 12px 16px;
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: #e4e6eb;
+            cursor: pointer;
+            text-align: left;
+            font-size: 14px;
+            font-weight: 500;
+            transition: 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .nav-btn:hover {
+            background: rgba(102, 126, 234, 0.1);
+            border-color: #667eea;
+            color: #667eea;
+        }
+
+        .nav-btn.active {
+            background: rgba(102, 126, 234, 0.2);
+            border-color: #667eea;
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .sidebar-footer {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .admin-profile {
+            padding: 12px;
+            background: rgba(102, 126, 234, 0.1);
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .admin-profile .username {
+            font-size: 12px;
+            color: #8b8d91;
+            margin-bottom: 4px;
+        }
+
+        .admin-profile .role {
+            font-size: 13px;
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .logout-btn {
+            padding: 10px 16px;
+            background: rgba(255, 71, 87, 0.1);
+            border: 1px solid rgba(255, 71, 87, 0.3);
+            border-radius: 8px;
+            color: #ff4757;
+            cursor: pointer;
+            font-weight: 600;
+            transition: 0.3s;
+            font-size: 14px;
+        }
+
+        .logout-btn:hover {
+            background: rgba(255, 71, 87, 0.2);
+        }
+
+        /* ==================== MAIN CONTENT ==================== */
+        .main-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 30px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 700;
+        }
+
+        .content-section {
+            display: none;
+        }
+
+        .content-section.active {
+            display: block;
+        }
+
+        /* ==================== FILTERS ==================== */
+        .filters-section {
+            background: #1a1f3a;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .filters {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .filter-group label {
+            font-size: 12px;
+            color: #8b8d91;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .filter-group input,
+        .filter-group select {
+            padding: 10px;
+            background: #0f1420;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            color: #e4e6eb;
+            font-size: 14px;
+        }
+
+        .filter-group select {
+            cursor: pointer;
+        }
+
+        .search-btn {
+            padding: 10px 20px;
+            background: #667eea;
+            border: none;
+            border-radius: 6px;
+            color: white;
+            cursor: pointer;
+            font-weight: 600;
+            align-self: flex-end;
+            transition: 0.3s;
+        }
+
+        .search-btn:hover {
+            background: #5568d3;
+        }
+
+        /* ==================== STATS ==================== */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: #1a1f3a;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .stat-card .label {
+            font-size: 13px;
+            color: #8b8d91;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .stat-card .value {
+            font-size: 32px;
+            font-weight: 700;
+            color: #667eea;
+        }
+
+        .stat-card .description {
+            font-size: 12px;
+            color: #8b8d91;
+        }
+
+        /* ==================== TABLE ==================== */
+        .logs-table {
+            background: #1a1f3a;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        .logs-table table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .logs-table th {
+            background: rgba(102, 126, 234, 0.1);
+            padding: 15px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 600;
+            color: #667eea;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            text-transform: uppercase;
+        }
+
+        .logs-table td {
+            padding: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            font-size: 14px;
+        }
+
+        .logs-table tr:hover {
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .event-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            background: rgba(102, 126, 234, 0.2);
+            color: #667eea;
+        }
+
+        .event-badge.high {
+            background: rgba(255, 71, 87, 0.2);
+            color: #ff4757;
+        }
+
+        .timestamp {
+            color: #8b8d91;
+            font-size: 13px;
+        }
+
+        .users-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .user-card {
+            background: #1a1f3a;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .user-card .name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #e4e6eb;
+        }
+
+        .user-card .username {
+            font-size: 13px;
+            color: #8b8d91;
+        }
+
+        .user-card .stats {
+            display: flex;
+            justify-content: space-between;
+            padding-top: 12px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .user-card .stat-item {
+            text-align: center;
+        }
+
+        .user-card .stat-item .value {
+            font-size: 18px;
+            font-weight: 700;
+            color: #667eea;
+        }
+
+        .user-card .stat-item .label {
+            font-size: 11px;
+            color: #8b8d91;
+            margin-top: 4px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #8b8d91;
+        }
+
+        .error {
+            padding: 15px;
+            background: rgba(255, 71, 87, 0.1);
+            border: 1px solid #ff4757;
+            border-radius: 6px;
+            color: #ff4757;
+            margin-bottom: 20px;
+        }
+
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: #8b8d91;
+        }
+
+        .kibana-link {
+            display: inline-block;
+            padding: 12px 24px;
+            background: #667eea;
+            border: none;
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            font-weight: 600;
+            text-decoration: none;
+            transition: 0.3s;
+        }
+
+        .kibana-link:hover {
+            background: #5568d3;
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <!-- SIDEBAR -->
+        <aside class="sidebar">
+            <div class="sidebar-logo">SocialSync Admin</div>
+            
+            <nav class="sidebar-nav">
+                <button class="nav-btn active" onclick="showSection('logs')">📊 Logs</button>
+                <button class="nav-btn" onclick="showSection('statistics')">📈 Statistics</button>
+                <button class="nav-btn" onclick="showSection('users')">👥 Users</button>
+                <button class="nav-btn" onclick="goToKibana()">🔗 Kibana Dashboard</button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="admin-profile">
+                    <div class="username" id="adminUsername">Loading...</div>
+                    <div class="role">Admin</div>
+                </div>
+                <button class="logout-btn" onclick="logout()">Logout</button>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="main-content">
+            <!-- LOGS SECTION -->
+            <div class="content-section active" id="logs-section">
+                <div class="header">
+                    <h1>📊 System Logs</h1>
+                </div>
+                
+                <div class="filters-section">
+                    <div style="display: flex; gap: 15px; align-items: flex-end;">
+                        <div class="filter-group" style="flex: 1;">
+                            <label>Event Type</label>
+                            <select id="eventTypeFilter">
+                                <option value="LOGIN">🔓 Login</option>
+                                <option value="POST_CREATED">📝 Post Created</option>
+                                <option value="COMMENT_ADDED">💬 Comment Added</option>
+                                <option value="LIKE_ADDED">❤️ Like Added</option>
+                                <option value="USER_FOLLOWS">👥 User Follows</option>
+                                <option value="SOMEONE_FOLLOWS_YOU">⭐ Someone Follows You</option>
+                            </select>
+                        </div>
+
+                        <div class="filter-group" style="flex: 1;">
+                            <label>Username</label>
+                            <input type="text" id="usernameFilter" placeholder="Search username...">
+                        </div>
+
+                        <button class="search-btn" onclick="searchLogs()">Search Logs</button>
+                    </div>
+                </div>
+
+                <div id="logsError" class="error" style="display:none;"></div>
+
+                <div class="logs-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Event</th>
+                                <th>Username</th>
+                                <th>Description</th>
+                                <th>Details</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logsTableBody">
+                            <tr><td colspan="5" class="loading">Loading logs...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- STATISTICS SECTION -->
+            <div class="content-section" id="statistics-section">
+                <div class="header">
+                    <h1>📈 Statistics</h1>
+                </div>
+
+                <div id="statsError" class="error" style="display:none;"></div>
+
+                <div class="stats-grid" id="statsGrid">
+                    <div class="stat-card">
+                        <div class="label">Total Logins (24h)</div>
+                        <div class="value" id="totalLogins">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="label">Total Users</div>
+                        <div class="value" id="totalUsers">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="label">Total Posts</div>
+                        <div class="value" id="totalPosts">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="label">High Priority Events</div>
+                        <div class="value" id="highPriorityEvents">-</div>
+                    </div>
+                </div>
+
+                <div class="header" style="margin-top: 40px;">
+                    <h2>Top Events</h2>
+                </div>
+
+                <div class="logs-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Event Type</th>
+                                <th>Count</th>
+                                <th>Percentage</th>
+                            </tr>
+                        </thead>
+                        <tbody id="topEventsBody">
+                            <tr><td colspan="3" class="loading">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- USERS SECTION -->
+            <div class="content-section" id="users-section">
+                <div class="header">
+                    <h1>👥 Active Users</h1>
+                </div>
+
+                <div id="usersError" class="error" style="display:none;"></div>
+
+                <div class="users-grid" id="usersGrid">
+                    <div class="loading">Loading users...</div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+        const KIBANA_URL = 'http://localhost:5601'; // Change this to your Kibana URL
+
+        // Check if admin on page load
+        document.addEventListener('DOMContentLoaded', async () => {
+            const isAdmin = await checkAdminAccess();
+            if (!isAdmin) {
+                window.location.href = 'login.html';
+                return;
+            }
+            loadAdminInfo();
+            searchLogs();
+            loadStatistics();
+            loadUsers();
+        });
+
+        async function checkAdminAccess() {
+            try {
+                let token = localStorage.getItem('token');
+                if (!token) {
+                    console.log('❌ No token found');
+                    return false;
+                }
+                
+                token = token.replace(/^"(.*)"$/, '$1').trim();
+                const res = await fetch('/api/admin/info', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                console.log('Admin check response:', res.status);
+                
+                if (res.ok) {
+                    console.log('✅ Admin verified');
+                    return true;
+                } else {
+                    console.log('❌ Admin check failed:', res.status);
+                    return false;
+                }
+            } catch (error) {
+                console.error('Admin check error:', error);
+                return false;
+            }
+        }
+
+        async function apiFetch(path, opts = {}) {
+            let token = localStorage.getItem('token');
+            if (!token) {
+                window.location.href = 'login.html';
+                throw new Error('No token');
+            }
+
+            token = token.replace(/^"(.*)"$/, '$1').trim();
+
+            const headers = {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+                ...opts.headers
+            };
+
+            const res = await fetch(API_BASE + path, {
+                ...opts,
+                headers
+            });
+
+            if (res.status === 401 || res.status === 403) {
+                localStorage.removeItem('token');
+                window.location.href = 'login.html';
+                throw new Error('Unauthorized');
+            }
+
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || res.statusText);
+            }
+
+            return res.json();
+        }
+
+        function showSection(section) {
+            // Hide all sections
+            document.querySelectorAll('.content-section').forEach(el => {
+                el.classList.remove('active');
+            });
+
+            // Remove active from all buttons
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+
+            // Show selected section
+            document.getElementById(section + '-section').classList.add('active');
+
+            // Add active to clicked button
+            event.target.classList.add('active');
+
+            // Load data for section
+            if (section === 'statistics') loadStatistics();
+            if (section === 'users') loadUsers();
+        }
+
+        async function loadAdminInfo() {
+            try {
+                const data = await apiFetch('/admin/info');
+                document.getElementById('adminUsername').textContent = data.username || 'Admin';
+            } catch (error) {
+                console.error('Failed to load admin info:', error);
+            }
+        }
+
+        async function searchLogs() {
+            try {
+                const eventType = document.getElementById('eventTypeFilter').value;
+                const username = document.getElementById('usernameFilter').value;
+
+                const params = new URLSearchParams();
+                if (eventType) params.append('eventType', eventType);
+                if (username) params.append('username', username);
+
+                console.log('🔍 Searching logs with params:', params.toString());
+                const data = await apiFetch(`/admin/logs?${params}`);
+                displayLogs(data.logs || []);
+                hideError('logsError');
+            } catch (error) {
+                console.error('Search error:', error);
+                showError('logsError', error.message);
+            }
+        }
+
+        function displayLogs(logs) {
+            const tbody = document.getElementById('logsTableBody');
+            if (!logs || logs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="no-data">No logs found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = logs.map(log => {
+                const eventIcons = {
+                    'LOGIN': '🔓',
+                    'POST_CREATED': '📝',
+                    'COMMENT_ADDED': '💬',
+                    'LIKE_ADDED': '❤️',
+                    'USER_FOLLOWS': '👥',
+                    'SOMEONE_FOLLOWS_YOU': '⭐'
+                };
+
+                const icon = eventIcons[log.eventType] || '📌';
+                return `
+                <tr>
+                    <td>
+                        <span class="event-badge">
+                            ${icon} ${log.eventType}
+                            </span>
+                            </td>
+                            <td>${log.username || '-'}</td>
+                            <td>${log.description || '-'}</td>
+                            <td>${formatDetails(log)}</td>
+                            <td><span class="timestamp">${formatTime(log.timestamp)}</span></td>
+                            </tr>
+                            `;
+                        }).join('');
+                    }
+
+                    function formatDetails(log) {
+                        const details = [];
+                        if (log.metadata?.device) details.push(`Device: ${log.metadata.device.substring(0, 20)}...`);
+                        if (log.metadata?.ip) details.push(`IP: ${log.metadata.ip}`);
+                        if (log.metadata?.postId) details.push(`Post ID: ${log.metadata.postId}`);
+                        if (log.metadata?.reason) details.push(`Reason: ${log.metadata.reason}`);
+                        return details.join(' | ') || '-';
+                    }
+
+                    function formatTime(timestamp) {
+                        if (!timestamp) return '-';
+                        const date = new Date(timestamp);
+                        return date.toLocaleTimeString('en-US', { 
+                            hour: '2-digit', 
+                            minute: '2-digit',
+                            second: '2-digit'
+                        });
+                    }
+
+
+        async function loadStatistics() {
+            try {
+                const data = await apiFetch('/admin/stats');
+                
+                document.getElementById('totalLogins').textContent = data.totalLogins || 0;
+                document.getElementById('totalUsers').textContent = data.totalUsers || 0;
+                document.getElementById('totalPosts').textContent = data.totalPosts || 0;
+                document.getElementById('highPriorityEvents').textContent = data.highPriorityEvents || 0;
+
+                displayTopEvents(data.topEvents || []);
+                hideError('statsError');
+            } catch (error) {
+                showError('statsError', error.message);
+            }
+        }
+
+        function displayTopEvents(events) {
+            const tbody = document.getElementById('topEventsBody');
+
+            if (!events || events.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" class="no-data">No events</td></tr>';
+                return;
+            }
+
+            const total = events.reduce((sum, e) => sum + e.count, 0);
+
+            tbody.innerHTML = events.map(event => `
+                <tr>
+                    <td>${event.eventType}</td>
+                    <td>${event.count}</td>
+                    <td>${((event.count / total) * 100).toFixed(2)}%</td>
+                </tr>
+            `).join('');
+        }
+
+        async function loadUsers() {
+            try {
+                const data = await apiFetch('/admin/users');
+                displayUsers(data.users || []);
+                hideError('usersError');
+            } catch (error) {
+                showError('usersError', error.message);
+            }
+        }
+
+        function displayUsers(users) {
+            const grid = document.getElementById('usersGrid');
+
+            if (!users || users.length === 0) {
+                grid.innerHTML = '<div class="no-data">No users found</div>';
+                return;
+            }
+
+            grid.innerHTML = users.map(user => `
+                <div class="user-card">
+                    <div class="name">${user.displayName || user.username}</div>
+                    <div class="username">@${user.username}</div>
+                    <div class="stats">
+                        <div class="stat-item">
+                            <div class="value">${user.followersCount || 0}</div>
+                            <div class="label">Followers</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="value">${user.followingCount || 0}</div>
+                            <div class="label">Following</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="value">${user.postsCount || 0}</div>
+                            <div class="label">Posts</div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function goToKibana() {
+            window.open(KIBANA_URL, '_blank');
+        }
+
+        function logout() {
+            if (confirm('Logout from admin panel?')) {
+                localStorage.removeItem('token');
+                window.location.href = 'login.html';
+            }
+        }
+
+        function showError(elementId, message) {
+            const el = document.getElementById(elementId);
+            el.textContent = `Error: ${message}`;
+            el.style.display = 'block';
+        }
+
+        function hideError(elementId) {
+            document.getElementById(elementId).style.display = 'none';
+        }
+    </script>
+</body>
+</html>

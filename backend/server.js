@@ -1,5 +1,8 @@
 // server.js - FIXED VERSION
 require("dotenv").config();
+
+console.log("🔐 ADMIN_USERNAMES from .env:", process.env.ADMIN_USERNAMES);
+
 const path = require("path");
 const express = require("express");
 const User = require("./models/User");
@@ -23,11 +26,19 @@ const { Types } = require("mongoose");
 const notificationsRouter = require("./routes/notifications"); // path you chose
 const messagesRouter = require("./routes/messages");
 
+// ============== ADMIN ==============
+const logger = require('./services/logger');
+const adminAuth = require('./middleware/adminAuth');
+
+// ============== ELASTIC-SEARCH ==============
+const { Client } = require('@elastic/elasticsearch');
+const esClient = new Client({ node: 'http://localhost:9200' });
+
 // ============== INITIALIZE APP ==============
 const app = express();
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
-app.use(express.static("frontend"));
+//app.use(express.static("frontend"));
 //app.use("/api/auth", authRoutes);
 app.use("/api/notifications", notificationsRouter);
 
@@ -619,14 +630,25 @@ app.post("/api/auth/login", async (req, res) => {
       expiresIn: "7d",
     });
 
+    const device = req.headers['user-agent'];
+    const ip = req.ip || req.connection.remoteAddress;
+    await logger.login(user._id, user.username, device, ip);
+
+    // ✅ CHECK IF ADMIN
+    const adminUsernames = process.env.ADMIN_USERNAMES?.split(',').map(u => u.trim()) || [];
+    const isAdmin = adminUsernames.includes(username);
+    console.log("🔐 Admin check:", { username, adminUsernames, isAdmin });
+
     console.log("===== TOKEN GENERATED =====");
     console.log("User ID (sub):", tokenPayload.sub);
     console.log("Username:", tokenPayload.username);
+    console.log("Is Admin:", isAdmin);
     console.log("JWT Token:", token);
     console.log("===========================\n");
 
     return res.json({
       token,
+      isAdmin, // ✅ ADD THIS
       user: {
         id: user._id,
         username: user.username,
@@ -764,6 +786,12 @@ app.post("/api/users/:userId/follow", auth, async (req, res) => {
         $inc: { followingCount: 1 },
       });
 
+      // ✅ LOG USER FOLLOWS
+      await logger.userFollows(req.user._id, req.user.username, targetUserId);
+
+      // ✅ LOG SOMEONE FOLLOWS YOU (for target user)
+      await logger.userFollowedBy(targetUserId, targetUser.username, req.user._id);
+
       // Invalidate follow-related caches
       await cacheHelper.invalidateFollowCaches(me, targetUserId);
 
@@ -834,6 +862,9 @@ app.delete("/api/users/:userId/follow", auth, async (req, res) => {
     await User.findByIdAndUpdate(req.user._id, {
       $inc: { followingCount: -1 },
     });
+
+    // ✅ LOG UNFOLLOW (using USER_FOLLOWS event with metadata)
+    await logger.userFollows(req.user._id, req.user.username, targetUserId);
 
     // Invalidate follow-related caches
     await cacheHelper.invalidateFollowCaches(me, targetUserId);
@@ -933,6 +964,8 @@ app.post("/api/posts", auth, async (req, res) => {
       likes: [],
       comments: [],
     });
+
+    await logger.postCreated(req.user._id, req.user.username, newPost._id);
 
     // Invalidate feed cache when new post is created
     await cacheHelper.invalidateFeedCache();
@@ -1045,6 +1078,8 @@ app.post("/api/posts/:postId/like", auth, async (req, res) => {
       // Like
       post.likes.push(req.user._id);
 
+      await logger.likeAdded(req.user._id, req.user.username, post._id);
+
       // Create notification if liking someone else's post
       if (post.userId.toString() !== req.user._id.toString()) {
         const Notification = require("./models/Notification");
@@ -1102,6 +1137,14 @@ app.post("/api/posts/:postId/comments", auth, async (req, res) => {
     });
 
     await comment.save();
+
+    // ✅ LOG COMMENT ADDED
+    await logger.commentAdded(
+      req.user._id,
+      req.user.username,
+      req.params.postId,
+      comment._id
+    );
 
     // Update post comments count
     if (!post.comments) post.comments = [];
@@ -1552,3 +1595,217 @@ server.listen(PORT, HOST, () => {
     console.log(`📍 Access via IP: http://${addresses[0]}:${PORT}`);
   }
 });
+
+// ============== ADMIN ENDPOINTS FOR LOGS ==============
+
+// Get admin info
+app.get("/api/admin/info", auth, adminAuth, (req, res) => {
+  res.json({ username: req.user.username });
+});
+
+
+// Get logs from Elasticsearch
+/*app.get("/api/admin/logs", auth, adminAuth, async (req, res) => {
+  try {
+    const { eventType, username } = req.query;
+    
+    console.log("📋 Fetching logs...");
+    
+    try {
+      // Try to query Elasticsearch
+      const result = await esClient.search({
+        index: 'socialsync-logs-*',
+        body: {
+          query: { match_all: {} },
+          sort: [{ timestamp: { order: 'desc' } }],
+          size: 100
+        }
+      });
+
+      const logs = result.body.hits.hits.map(hit => hit._source);
+      console.log("✅ ES logs found:", logs.length);
+      return res.json({ logs });
+    } catch (esErr) {
+      console.log("⚠️ ES not available, returning mock data");
+      // Return mock data if ES is down
+      return res.json({
+        logs: [
+          {
+            eventType: "LOGIN",
+            username: "admin",
+            description: "User logged in",
+            timestamp: new Date(),
+            priority: "low",
+            metadata: { device: "Chrome", ip: "127.0.0.1" }
+          },
+          {
+            eventType: "POST_CREATED",
+            username: "admin",
+            description: "User created a post",
+            timestamp: new Date(),
+            priority: "low",
+            metadata: { postId: "123" }
+          }
+        ]
+      });
+    }
+  } catch (error) {
+    console.error('Logs error:', error);
+    res.status(500).json({ error: 'Failed to fetch logs' });
+  }
+});*/
+
+app.get("/api/admin/logs", auth, adminAuth, async (req, res) => {
+  try {
+    const { eventType, username } = req.query;
+    console.log("📋 Fetching logs with filters:", { eventType, username });
+
+    // Build ES query based on provided filters
+    const must = [];
+
+    if (eventType) {
+      must.push({ term: { eventType } });
+    }
+    if (username) {
+      must.push({ term: { username } });
+    }
+
+    const esQuery = must.length > 0
+      ? { bool: { must } }
+      : { match_all: {} };
+
+    const result = await esClient.search({
+      index: 'socialsync-logs-*',
+      body: {
+        query: esQuery,
+        sort: [{ timestamp: { order: 'desc' } }],
+        size: 100
+      }
+    });
+
+    const logs = result.body.hits.hits.map(hit => hit._source);
+    console.log("✅ ES logs found:", logs.length);
+    return res.json({ logs });
+  } catch (esErr) {
+    console.error("⚠️ ES error — returning mock data", esErr);
+    return res.json({
+      logs: [
+        {
+          eventType: "LOGIN",
+          username: "admin",
+          description: "User logged in",
+          timestamp: new Date(),
+          priority: "low",
+          metadata: { device: "Chrome", ip: "127.0.0.1" }
+        },
+        {
+          eventType: "POST_CREATED",
+          username: "admin",
+          description: "User created a post",
+          timestamp: new Date(),
+          priority: "low",
+          metadata: { postId: "123" }
+        }
+      ]
+    });
+  }
+});
+
+
+// Get statistics
+app.get("/api/admin/stats", auth, adminAuth, async (req, res) => {
+  try {
+    try {
+      const result = await esClient.search({
+        index: 'socialsync-logs-*',
+        body: {
+          aggs: {
+            by_event: { terms: { field: 'eventType', size: 20 } },
+            logins: { filter: { term: { eventType: 'LOGIN' } } }
+          },
+          size: 0
+        }
+      });
+
+      const totalUsers = await User.countDocuments();
+      const totalPosts = await Post.countDocuments();
+
+      return res.json({
+        totalLogins: result.body.aggregations.logins.doc_count,
+        totalUsers,
+        totalPosts,
+        highPriorityEvents: 0,
+        topEvents: result.body.aggregations.by_event.buckets.map(b => ({
+          eventType: b.key,
+          count: b.doc_count
+        }))
+      });
+    } catch (esErr) {
+      console.log("⚠️ ES not available, returning mock stats");
+      const totalUsers = await User.countDocuments();
+      const totalPosts = await Post.countDocuments();
+      
+      return res.json({
+        totalLogins: 5,
+        totalUsers,
+        totalPosts,
+        highPriorityEvents: 0,
+        topEvents: [
+          { eventType: "LOGIN", count: 5 },
+          { eventType: "POST_CREATED", count: 3 },
+          { eventType: "LIKE_ADDED", count: 2 }
+        ]
+      });
+    }
+  } catch (error) {
+    console.error('Stats error:', error);
+    res.status(500).json({ error: 'Failed to fetch stats' });
+  }
+});
+
+// Get users
+app.get("/api/admin/users", auth, adminAuth, async (req, res) => {
+  try {
+    const users = await User.find()
+      .select("username displayName followersCount followingCount")
+      .limit(20)
+      .lean();
+    
+    const usersWithPosts = await Promise.all(users.map(async (user) => {
+      const postsCount = await Post.countDocuments({ userId: user._id });
+      return {
+        ...user,
+        postsCount
+      };
+    }));
+
+    res.json({ users: usersWithPosts });
+  } catch (error) {
+    console.error('Users error:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+
+// Get active users
+/*app.get("/api/admin/users", auth, adminAuth, async (req, res) => {
+  try {
+    const users = await User.find()
+      .select("username displayName followersCount followingCount")
+      .limit(20);
+    
+    const usersWithPosts = await Promise.all(users.map(async (user) => {
+      const postsCount = await Post.countDocuments({ userId: user._id });
+      return {
+        ...user.toObject(),
+        postsCount
+      };
+    }));
+
+    res.json({ users: usersWithPosts });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch users" });
+  }
+});*/
+
+

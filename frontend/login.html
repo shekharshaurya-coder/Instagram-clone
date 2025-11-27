@@ -482,6 +482,12 @@
 
           const data = await res.json();
 
+          console.log("========== LOGIN RESPONSE ==========");
+          console.log("Full response:", JSON.stringify(data, null, 2));
+          console.log("isAdmin field:", data.isAdmin);
+          console.log("isAdmin type:", typeof data.isAdmin);
+          console.log("====================================");
+
           if (!res.ok) {
             if (res.status === 404) return showError("User not found");
             if (res.status === 401) return showError("Incorrect password");
@@ -508,12 +514,23 @@
             }
 
             console.log("✅ Token verified in localStorage");
-            console.log("🔄 Redirecting to index.html...");
+            // ✅ CHECK IF ADMIN AND REDIRECT
+            console.log("🔍 Checking if user is admin...");
+            console.log("Is Admin:", data.isAdmin);
 
-            // Wait a tiny bit to ensure storage completes, then redirect
-            setTimeout(() => {
-              window.location.href = "/index.html";
-            }, 100);
+            if (data.isAdmin) {
+              console.log("👤 Admin detected! Redirecting to /admin.html");
+              setTimeout(() => {
+                window.location.href = "/admin.html";
+              }, 100);
+
+            } else {
+              console.log("👥 Regular user. Redirecting to /index.html");
+              setTimeout(() => {
+                window.location.href = "/index.html";
+              }, 100);
+            }
+
           } else {
             showError("No token received from server");
             submitBtn.disabled = false;
