@@ -989,6 +989,7 @@ app.post("/api/posts", auth, async (req, res) => {
 
 // GET FEED
 app.get("/api/posts/feed", auth, async (req, res) => {
+  console.log("🔴 FEED ENDPOINT CALLED WITH USER:", req.user.username);
   try {
     const { cursor } = req.query;
     const limit = 10; // Number of posts per page
@@ -999,6 +1000,14 @@ app.get("/api/posts/feed", auth, async (req, res) => {
     const cached = await redisHelpers.getJSON(cacheKey);
     if (cached) {
       console.log(`✅ Feed cache hit for cursor: ${cursor || "first_page"}`);
+      try {
+        console.log("response api (cache)", {
+          posts: Array.isArray(cached.posts) ? cached.posts.length : "unknown",
+          nextCursor: cached.nextCursor || null,
+        });
+      } catch (e) {
+        console.log("response api (cache) - could not inspect cached payload");
+      }
       return res.json(cached);
     }
 
@@ -1050,6 +1059,15 @@ app.get("/api/posts/feed", auth, async (req, res) => {
 
     // Cache for 1 minute
     await redisHelpers.setJSON(cacheKey, response, { ex: 60 });
+
+    try {
+      console.log("response api", {
+        posts: Array.isArray(response.posts) ? response.posts.length : 0,
+        nextCursor: response.nextCursor || null,
+      });
+    } catch (e) {
+      console.log("response api - could not inspect response payload");
+    }
 
     res.json(response);
   } catch (err) {
@@ -1655,46 +1673,100 @@ app.get("/api/admin/info", auth, adminAuth, (req, res) => {
   }
 });*/
 
-app.get("/api/admin/logs", auth, adminAuth, async (req, res) => {
+/*app.get("/api/admin/logs", auth, adminAuth, async (req, res) => {
   try {
     const { eventType, username } = req.query;
-    console.log("📋 Fetching logs with filters:", { eventType, username });
+    
+    console.log("📋 Querying Elasticsearch...", { eventType, username });
 
-    // Build ES query based on provided filters
     const must = [];
-
+    
     if (eventType) {
       must.push({ term: { eventType } });
     }
+    
     if (username) {
-      must.push({ term: { username } });
+      must.push({ match: { username } });
     }
 
-    const esQuery = must.length > 0
-      ? { bool: { must } }
-      : { match_all: {} };
+    const body = {
+      query: must.length > 0 ? { bool: { must } } : { match_all: {} },
+      sort: [{ timestamp: { order: 'desc' } }],
+      size: 100
+    };
+
+    console.log('ES Query:', JSON.stringify(body, null, 2));
 
     const result = await esClient.search({
       index: 'socialsync-logs-*',
-      body: {
-        query: esQuery,
-        sort: [{ timestamp: { order: 'desc' } }],
-        size: 100
-      }
+      body: body
     });
 
     const logs = result.body.hits.hits.map(hit => hit._source);
-    console.log("✅ ES logs found:", logs.length);
+    console.log(`✅ ES returned ${logs.length} logs`);
+    
     return res.json({ logs });
-  } catch (esErr) {
-    console.error("⚠️ ES error — returning mock data", esErr);
-    return res.json({
-      logs: [
+  } catch (error) {
+    console.error('❌ ES Error:', error.message);
+    res.status(500).json({ error: `Elasticsearch error: ${error.message}` });
+  }
+});*/
+
+app.get("/api/admin/logs", auth, adminAuth, async (req, res) => {
+  try {
+    const { eventType, username } = req.query;
+    
+    console.log("📋 Fetching logs with filters:", { eventType, username });
+    
+    try {
+      // Build query based on filters
+      const must = [];
+      
+      if (eventType) {
+        must.push({ match: { eventType: eventType } });
+      }
+      
+      if (username) {
+        must.push({ match: { username: username } });
+      }
+
+      // Try to query Elasticsearch
+      const result = await esClient.search({
+        index: 'socialsync-logs-*',
+        body: {
+          query: must.length > 0 ? { bool: { must } } : { match_all: {} },
+          sort: [{ "@timestamp": { order: 'desc' } }],
+          size: 100
+        }
+      });
+
+      // Handle both Elasticsearch v7 and v8 response formats
+      let hits = [];
+      if (result.body && result.body.hits) {
+        // v7 format: result.body.hits.hits
+        hits = result.body.hits.hits;
+        console.log("✅ ES v7 - logs found:", hits.length);
+      } else if (result.hits) {
+        // v8 format: result.hits.hits
+        hits = result.hits.hits;
+        console.log("✅ ES v8 - logs found:", hits.length);
+      }
+      
+      const logs = hits.map(hit => hit._source);
+      console.log("✅ Processed logs:", logs.length);
+      return res.json({ logs });
+    } catch (esErr) {
+      console.log("⚠️ ES query failed:", esErr.message);
+      console.error("ES Error details:", esErr);
+      
+      // Return mock data if ES is down
+      const mockLogs = [
         {
           eventType: "LOGIN",
           username: "admin",
           description: "User logged in",
-          timestamp: new Date(),
+          timestamp: new Date().toISOString(),
+          "@timestamp": new Date().toISOString(),
           priority: "low",
           metadata: { device: "Chrome", ip: "127.0.0.1" }
         },
@@ -1702,12 +1774,27 @@ app.get("/api/admin/logs", auth, adminAuth, async (req, res) => {
           eventType: "POST_CREATED",
           username: "admin",
           description: "User created a post",
-          timestamp: new Date(),
+          timestamp: new Date().toISOString(),
+          "@timestamp": new Date().toISOString(),
           priority: "low",
           metadata: { postId: "123" }
         }
-      ]
-    });
+      ];
+
+      // Apply filters to mock data too
+      let filtered = mockLogs;
+      if (eventType) {
+        filtered = filtered.filter(log => log.eventType === eventType);
+      }
+      if (username) {
+        filtered = filtered.filter(log => log.username.toLowerCase().includes(username.toLowerCase()));
+      }
+
+      return res.json({ logs: filtered });
+    }
+  } catch (error) {
+    console.error('Logs error:', error);
+    res.status(500).json({ error: 'Failed to fetch logs' });
   }
 });
 
@@ -1730,12 +1817,20 @@ app.get("/api/admin/stats", auth, adminAuth, async (req, res) => {
       const totalUsers = await User.countDocuments();
       const totalPosts = await Post.countDocuments();
 
+      // Handle both Elasticsearch v7 and v8 response formats
+      let aggs = {};
+      if (result.body && result.body.aggregations) {
+        aggs = result.body.aggregations;
+      } else if (result.aggregations) {
+        aggs = result.aggregations;
+      }
+
       return res.json({
-        totalLogins: result.body.aggregations.logins.doc_count,
+        totalLogins: aggs.logins?.doc_count || 0,
         totalUsers,
         totalPosts,
         highPriorityEvents: 0,
-        topEvents: result.body.aggregations.by_event.buckets.map(b => ({
+        topEvents: (aggs.by_event?.buckets || []).map(b => ({
           eventType: b.key,
           count: b.doc_count
         }))

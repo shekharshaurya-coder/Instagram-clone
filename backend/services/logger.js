@@ -1,10 +1,11 @@
 const dgram = require('dgram');
 
 class LoggerService {
-  constructor(logstashHost = 'localhost', logstashPort = 5000) {
+  constructor(logstashHost = process.env.LOGSTASH_HOST || 'localhost', logstashPort = process.env.LOGSTASH_PORT || 5000) {
     this.logstashHost = logstashHost;
     this.logstashPort = logstashPort;
     this.client = dgram.createSocket('udp4');
+    console.log(`🔌 Logger initialized - sending logs to ${this.logstashHost}:${this.logstashPort}`);
   }
 
   sendLog(eventType, userId, username, description, metadata = {}, priority = 'low') {
@@ -19,9 +20,16 @@ class LoggerService {
     };
 
     const message = JSON.stringify(logData);
+    console.log('📤 Sending to Logstash:', logData);
+    
     this.client.send(message, 0, message.length, this.logstashPort, this.logstashHost, (err) => {
-      if (err) console.error('❌ Log send error:', err);
-      else console.log('✅ Log sent:', eventType);
+      if (err) {
+        console.error(`❌ Log send error to ${this.logstashHost}:${this.logstashPort}:`, err.message);
+        // Fallback: log to console if Logstash fails
+        console.log('📝 [FALLBACK LOG]', logData);
+      } else {
+        console.log('✅ Log sent to Logstash:', eventType);
+      }
     });
   }
 
