@@ -387,6 +387,7 @@
             background: #5568d3;
         }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
 </head>
 <body>
     <div class="app">
@@ -398,7 +399,7 @@
                 <button class="nav-btn active" onclick="showSection('logs')">📊 Logs</button>
                 <button class="nav-btn" onclick="showSection('statistics')">📈 Statistics</button>
                 <button class="nav-btn" onclick="showSection('users')">👥 Users</button>
-                <button class="nav-btn" onclick="goToKibana()">🔗 Kibana Dashboard</button>
+                <button class="nav-btn" onclick="openKibanaDashboard()">🔗 Analytics Dashboard</button>
             </nav>
 
             <div class="sidebar-footer">
@@ -464,10 +465,22 @@
             <!-- STATISTICS SECTION -->
             <div class="content-section" id="statistics-section">
                 <div class="header">
-                    <h1>📈 Statistics</h1>
+                    <h1>📈 Statistics & Visualizations</h1>
                 </div>
 
                 <div id="statsError" class="error" style="display:none;"></div>
+
+                <!-- Events Distribution Chart -->
+                <div style="background: #1a1f3a; padding: 20px; border-radius: 12px; margin-bottom: 30px; border: 1px solid rgba(255, 255, 255, 0.05);">
+                    <h2 style="margin-bottom: 20px;">📊 Event Distribution</h2>
+                    <canvas id="eventDistributionChart" style="max-height: 350px;"></canvas>
+                </div>
+
+                <!-- Event Timeline Chart -->
+                <div style="background: #1a1f3a; padding: 20px; border-radius: 12px; margin-bottom: 30px; border: 1px solid rgba(255, 255, 255, 0.05);">
+                    <h2 style="margin-bottom: 20px;">📈 Events Timeline (Last 7 days)</h2>
+                    <canvas id="eventsTimelineChart" style="max-height: 350px;"></canvas>
+                </div>
 
                 <div class="stats-grid" id="statsGrid">
                     <div class="stat-card">
@@ -785,8 +798,425 @@
             `).join('');
         }
 
-        function goToKibana() {
-            window.open(KIBANA_URL, '_blank');
+        // Get logs chart data
+        async function loadLogsChart() {
+            try {
+                const data = await apiFetch('/api/admin/logs-chart');
+                displayLogsChart(data);
+            } catch (error) {
+                console.error('Chart error:', error);
+            }
+        }
+
+        // Open Kibana Dashboard with logs - Embedded Visualization
+        function openKibanaDashboard() {
+            // Create a modal for embedded Kibana visualization
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.7);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 10000;
+            `;
+
+            const container = document.createElement('div');
+            container.style.cssText = `
+                width: 90%;
+                height: 90%;
+                background: #0a0e27;
+                border-radius: 12px;
+                display: flex;
+                flex-direction: column;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+            `;
+
+            // Header with close button
+            const header = document.createElement('div');
+            header.style.cssText = `
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 20px;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+                background: #1a1f3a;
+            `;
+
+            const title = document.createElement('h2');
+            title.textContent = '📊 Kibana Logs Dashboard';
+            title.style.color = '#e4e6eb';
+
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = '✕';
+            closeBtn.style.cssText = `
+                background: rgba(255, 71, 87, 0.2);
+                border: 1px solid rgba(255, 71, 87, 0.3);
+                color: #ff4757;
+                padding: 8px 16px;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 18px;
+                font-weight: bold;
+            `;
+            closeBtn.onclick = () => modal.remove();
+
+            header.appendChild(title);
+            header.appendChild(closeBtn);
+
+            // Filters section
+            const filtersSection = document.createElement('div');
+            filtersSection.style.cssText = `
+                background: #1a1f3a;
+                padding: 15px 20px;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+                display: flex;
+                gap: 15px;
+                align-items: center;
+            `;
+
+            const eventFilterLabel = document.createElement('label');
+            eventFilterLabel.textContent = 'Event Type:';
+            eventFilterLabel.style.cssText = 'color: #8b8d91; font-size: 12px; font-weight: 600;';
+
+            const eventFilterSelect = document.createElement('select');
+            eventFilterSelect.style.cssText = `
+                padding: 8px 12px;
+                background: #0f1420;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 6px;
+                color: #e4e6eb;
+                font-size: 13px;
+                cursor: pointer;
+            `;
+            eventFilterSelect.innerHTML = `
+                <option value="">All Events</option>
+                <option value="LOGIN">🔓 Login</option>
+                <option value="POST_CREATED">📝 Post Created</option>
+                <option value="COMMENT_ADDED">💬 Comment Added</option>
+                <option value="LIKE_ADDED">❤️ Like Added</option>
+                <option value="USER_FOLLOWS">👥 User Follows</option>
+            `;
+
+            const usernameFilterLabel = document.createElement('label');
+            usernameFilterLabel.textContent = 'Username:';
+            usernameFilterLabel.style.cssText = 'color: #8b8d91; font-size: 12px; font-weight: 600; margin-left: 20px;';
+
+            const usernameFilterInput = document.createElement('input');
+            usernameFilterInput.type = 'text';
+            usernameFilterInput.placeholder = 'Search username...';
+            usernameFilterInput.style.cssText = `
+                padding: 8px 12px;
+                background: #0f1420;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 6px;
+                color: #e4e6eb;
+                font-size: 13px;
+                min-width: 200px;
+            `;
+
+            const filterBtn = document.createElement('button');
+            filterBtn.textContent = 'Apply Filters';
+            filterBtn.style.cssText = `
+                padding: 8px 16px;
+                background: #667eea;
+                border: none;
+                border-radius: 6px;
+                color: white;
+                cursor: pointer;
+                font-weight: 600;
+                font-size: 13px;
+                margin-left: auto;
+                transition: 0.3s;
+            `;
+            filterBtn.onmouseover = () => filterBtn.style.background = '#5568d3';
+            filterBtn.onmouseout = () => filterBtn.style.background = '#667eea';
+
+            filtersSection.appendChild(eventFilterLabel);
+            filtersSection.appendChild(eventFilterSelect);
+            filtersSection.appendChild(usernameFilterLabel);
+            filtersSection.appendChild(usernameFilterInput);
+            filtersSection.appendChild(filterBtn);
+
+            // Content
+            const content = document.createElement('div');
+            content.style.cssText = `
+                flex: 1;
+                overflow: hidden;
+                display: flex;
+            `;
+
+            // Left sidebar with visualizations list
+            const sidebar = document.createElement('div');
+            sidebar.style.cssText = `
+                width: 250px;
+                background: #1a1f3a;
+                border-right: 1px solid rgba(255, 255, 255, 0.1);
+                padding: 20px;
+                overflow-y: auto;
+            `;
+
+            const vizTitle = document.createElement('h3');
+            vizTitle.textContent = 'Visualizations';
+            vizTitle.style.cssText = 'color: #667eea; margin-bottom: 15px; font-size: 14px;';
+
+            const vizItems = [
+                { name: 'Event Distribution', id: 'distribution' },
+                { name: 'Timeline (7 Days)', id: 'timeline' },
+                { name: 'Hourly Distribution', id: 'hourly' }
+            ];
+
+            sidebar.appendChild(vizTitle);
+            vizItems.forEach(viz => {
+                const item = document.createElement('div');
+                item.textContent = viz.name;
+                item.style.cssText = `
+                    padding: 12px;
+                    margin-bottom: 8px;
+                    background: rgba(102, 126, 234, 0.1);
+                    border-radius: 6px;
+                    cursor: pointer;
+                    color: #e4e6eb;
+                    font-size: 13px;
+                    border: 1px solid rgba(255, 255, 255, 0.05);
+                    transition: 0.3s;
+                `;
+                item.onmouseover = () => item.style.background = 'rgba(102, 126, 234, 0.2)';
+                item.onmouseout = () => item.style.background = 'rgba(102, 126, 234, 0.1)';
+                item.onclick = () => loadVisualization(viz.id, mainContent, {
+                    eventType: eventFilterSelect.value,
+                    username: usernameFilterInput.value
+                });
+                sidebar.appendChild(item);
+            });
+
+            // Main content area
+            const mainContent = document.createElement('div');
+            mainContent.style.cssText = `
+                flex: 1;
+                overflow-y: auto;
+                padding: 20px;
+            `;
+
+            // Load default visualization
+            loadVisualization('distribution', mainContent, {
+                eventType: eventFilterSelect.value,
+                username: usernameFilterInput.value
+            });
+
+            // Apply filters button action
+            filterBtn.onclick = () => {
+                loadVisualization('distribution', mainContent, {
+                    eventType: eventFilterSelect.value,
+                    username: usernameFilterInput.value
+                });
+            };
+
+            content.appendChild(sidebar);
+            content.appendChild(mainContent);
+
+            container.appendChild(header);
+            container.appendChild(filtersSection);
+            container.appendChild(content);
+            modal.appendChild(container);
+            document.body.appendChild(modal);
+
+            async function loadVisualization(vizType, container, filters) {
+                container.innerHTML = '<div style="text-align: center; padding: 40px; color: #8b8d91;">Loading visualization...</div>';
+                
+                try {
+                    // Build query params for filtering
+                    const params = new URLSearchParams();
+                    if (filters.eventType) params.append('eventType', filters.eventType);
+                    if (filters.username) params.append('username', filters.username);
+
+                    const logsData = await apiFetch(`/admin/logs?${params}`);
+                    
+                    if (vizType === 'distribution') {
+                        showDistributionChart(logsData, container, filters);
+                    } else if (vizType === 'timeline') {
+                        showTimelineChart(logsData, container, filters);
+                    } else if (vizType === 'hourly') {
+                        showHourlyChart(logsData, container, filters);
+                    }
+                } catch (error) {
+                    container.innerHTML = `<div style="color: #ff4757; padding: 20px;">Error: ${error.message}</div>`;
+                }
+            }
+
+            function showDistributionChart(logsData, container, filters) {
+                container.innerHTML = '<canvas id="kibanaDistributionChart" style="max-height: 400px;"></canvas>';
+                const ctx = document.getElementById('kibanaDistributionChart');
+                
+                // Filter events based on user and event type
+                const filteredLogs = (logsData.logs || []).filter(log => {
+                    if (filters.eventType && log.eventType !== filters.eventType) return false;
+                    if (filters.username && !log.username.toLowerCase().includes(filters.username.toLowerCase())) return false;
+                    return true;
+                });
+
+                const eventCounts = {};
+                filteredLogs.forEach(log => {
+                    eventCounts[log.eventType] = (eventCounts[log.eventType] || 0) + 1;
+                });
+
+                const labels = Object.keys(eventCounts);
+                const values = Object.values(eventCounts);
+                
+                const colors = {
+                    'LOGIN': 'rgba(102, 126, 234, 0.8)',
+                    'POST_CREATED': 'rgba(74, 222, 128, 0.8)',
+                    'COMMENT_ADDED': 'rgba(248, 113, 113, 0.8)',
+                    'LIKE_ADDED': 'rgba(255, 159, 64, 0.8)',
+                    'USER_FOLLOWS': 'rgba(153, 102, 255, 0.8)',
+                    'SOMEONE_FOLLOWS_YOU': 'rgba(54, 162, 235, 0.8)'
+                };
+
+                const bgColors = labels.map(l => colors[l] || 'rgba(200, 200, 200, 0.8)');
+                
+                new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: values,
+                            backgroundColor: bgColors,
+                            borderColor: bgColors.map(c => c.replace('0.8', '1')),
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                                labels: { color: '#e4e6eb', padding: 15 }
+                            }
+                        }
+                    }
+                });
+            }
+
+            function showTimelineChart(logsData, container, filters) {
+                container.innerHTML = '<canvas id="kibanaTimelineChart" style="max-height: 400px;"></canvas>';
+                const ctx = document.getElementById('kibanaTimelineChart');
+                
+                // Filter logs
+                const filteredLogs = (logsData.logs || []).filter(log => {
+                    if (filters.eventType && log.eventType !== filters.eventType) return false;
+                    if (filters.username && !log.username.toLowerCase().includes(filters.username.toLowerCase())) return false;
+                    return true;
+                });
+
+                const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                const values = Array(7).fill(0).map((_, i) => {
+                    return filteredLogs.filter(log => {
+                        const date = new Date(log.timestamp);
+                        return date.getDay() === (i + 1) % 7;
+                    }).length;
+                });
+                
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Events',
+                            data: values,
+                            borderColor: '#667eea',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            fill: true,
+                            tension: 0.4,
+                            pointBackgroundColor: '#667eea',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2,
+                            pointRadius: 5
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: { labels: { color: '#e4e6eb' } }
+                        },
+                        scales: {
+                            y: { 
+                                ticks: { color: '#8b8d91' }, 
+                                grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                                beginAtZero: true
+                            },
+                            x: { 
+                                ticks: { color: '#8b8d91' }, 
+                                grid: { color: 'rgba(255, 255, 255, 0.05)' } 
+                            }
+                        }
+                    }
+                });
+            }
+
+            function showHourlyChart(logsData, container, filters) {
+                container.innerHTML = '<canvas id="kibanaHourlyChart" style="max-height: 400px;"></canvas>';
+                const ctx = document.getElementById('kibanaHourlyChart');
+                
+                // Filter logs
+                const filteredLogs = (logsData.logs || []).filter(log => {
+                    if (filters.eventType && log.eventType !== filters.eventType) return false;
+                    if (filters.username && !log.username.toLowerCase().includes(filters.username.toLowerCase())) return false;
+                    return true;
+                });
+
+                const hourlyData = Array(24).fill(0);
+                filteredLogs.forEach(log => {
+                    const hour = new Date(log.timestamp).getHours();
+                    hourlyData[hour]++;
+                });
+
+                const labels = Array(24).fill(0).map((_, i) => `${i}:00`);
+                
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Events per Hour',
+                            data: hourlyData,
+                            backgroundColor: 'rgba(102, 126, 234, 0.7)',
+                            borderColor: '#667eea',
+                            borderWidth: 1,
+                            borderRadius: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        indexAxis: 'x',
+                        plugins: {
+                            legend: { labels: { color: '#e4e6eb' } }
+                        },
+                        scales: {
+                            y: { 
+                                ticks: { color: '#8b8d91' }, 
+                                grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                                beginAtZero: true
+                            },
+                            x: { 
+                                ticks: { color: '#8b8d91' }, 
+                                grid: { color: 'rgba(255, 255, 255, 0.05)' } 
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        function displayLogsChart(data) {
+            // Charts are now displayed in Kibana, not in the admin panel
+            console.log('✅ Logs data retrieved. Click "View in Kibana" to see visualizations.');
         }
 
         function logout() {

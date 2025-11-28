@@ -1903,4 +1903,39 @@ app.get("/api/admin/users", auth, adminAuth, async (req, res) => {
   }
 });*/
 
+// Get logs for charting
+app.get("/api/admin/logs-chart", auth, adminAuth, async (req, res) => {
+  try {
+    const result = await esClient.search({
+      index: 'socialsync-logs-*',
+      body: {
+        aggs: {
+          logs_over_time: {
+            date_histogram: {
+              field: 'timestamp',
+              fixed_interval: '1h'
+            },
+            aggs: {
+              event_type: {
+                terms: { field: 'eventType', size: 10 }
+              }
+            }
+          }
+        },
+        size: 0
+      }
+    });
+
+    const chartData = result.body.aggregations.logs_over_time.buckets.map(b => ({
+      time: new Date(b.key),
+      events: b.doc_count,
+      breakdown: b.event_type.buckets
+    }));
+
+    res.json(chartData);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch chart data' });
+  }
+});
+
 
