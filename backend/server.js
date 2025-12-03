@@ -1803,12 +1803,18 @@ app.get("/api/admin/logs", auth, adminAuth, async (req, res) => {
 app.get("/api/admin/stats", auth, adminAuth, async (req, res) => {
   try {
     try {
+      console.log("📊 Fetching stats from Elasticsearch...");
+      
       const result = await esClient.search({
         index: 'socialsync-logs-*',
         body: {
           aggs: {
-            by_event: { terms: { field: 'eventType', size: 20 } },
-            logins: { filter: { term: { eventType: 'LOGIN' } } }
+            by_event: { 
+              terms: { field: 'eventType.keyword', size: 20 } 
+            },
+            logins: { 
+              filter: { match: { eventType: 'LOGIN' } } 
+            }
           },
           size: 0
         }
@@ -1821,11 +1827,13 @@ app.get("/api/admin/stats", auth, adminAuth, async (req, res) => {
       let aggs = {};
       if (result.body && result.body.aggregations) {
         aggs = result.body.aggregations;
+        console.log("✅ Using ES v7 response format");
       } else if (result.aggregations) {
         aggs = result.aggregations;
+        console.log("✅ Using ES v8 response format");
       }
 
-      return res.json({
+      const stats = {
         totalLogins: aggs.logins?.doc_count || 0,
         totalUsers,
         totalPosts,
@@ -1834,23 +1842,70 @@ app.get("/api/admin/stats", auth, adminAuth, async (req, res) => {
           eventType: b.key,
           count: b.doc_count
         }))
-      });
+      };
+
+      console.log("📊 Stats result:", stats);
+      return res.json(stats);
     } catch (esErr) {
-      console.log("⚠️ ES not available, returning mock stats");
-      const totalUsers = await User.countDocuments();
-      const totalPosts = await Post.countDocuments();
+      console.log("⚠️ ES error:", esErr.message);
+      console.error("Error details:", esErr);
       
-      return res.json({
-        totalLogins: 5,
-        totalUsers,
-        totalPosts,
-        highPriorityEvents: 0,
-        topEvents: [
-          { eventType: "LOGIN", count: 5 },
-          { eventType: "POST_CREATED", count: 3 },
-          { eventType: "LIKE_ADDED", count: 2 }
-        ]
-      });
+      // Fallback: query logs directly if aggregation fails
+      try {
+        console.log("🔄 Trying fallback approach...");
+        const logsResult = await esClient.search({
+          index: 'socialsync-logs-*',
+          body: {
+            query: { match_all: {} },
+            size: 1000
+          }
+        });
+
+        let logs = [];
+        if (logsResult.body && logsResult.body.hits) {
+          logs = logsResult.body.hits.hits;
+        } else if (logsResult.hits) {
+          logs = logsResult.hits.hits;
+        }
+
+        const logData = logs.map(l => l._source);
+        const eventCounts = {};
+        let loginCount = 0;
+
+        logData.forEach(log => {
+          eventCounts[log.eventType] = (eventCounts[log.eventType] || 0) + 1;
+          if (log.eventType === 'LOGIN') loginCount++;
+        });
+
+        const totalUsers = await User.countDocuments();
+        const totalPosts = await Post.countDocuments();
+
+        const stats = {
+          totalLogins: loginCount,
+          totalUsers,
+          totalPosts,
+          highPriorityEvents: 0,
+          topEvents: Object.entries(eventCounts).map(([eventType, count]) => ({
+            eventType,
+            count
+          }))
+        };
+
+        console.log("✅ Fallback stats:", stats);
+        return res.json(stats);
+      } catch (fallbackErr) {
+        console.log("❌ Fallback also failed, returning mock stats");
+        const totalUsers = await User.countDocuments();
+        const totalPosts = await Post.countDocuments();
+        
+        return res.json({
+          totalLogins: 0,
+          totalUsers,
+          totalPosts,
+          highPriorityEvents: 0,
+          topEvents: []
+        });
+      }
     }
   } catch (error) {
     console.error('Stats error:', error);
